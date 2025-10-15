@@ -1,0 +1,17 @@
+{
+    "interpolacao-linear - treated bbr esmond data ap-ba 07-03-2023_longest_interval, bi-LSTM": {
+        "RMSE": 33.11007845885123,
+        "MAE": 23.13314435828173,
+        "NRMSE": 0.1729459177346388
+    },
+    "interpolacao-linear - treated bbr esmond data ap-ba 07-03-2023_longest_interval, GRU": {
+        "RMSE": 32.903473324642626,
+        "MAE": 22.828302837485076,
+        "NRMSE": 0.1718667443769314
+    },
+    "interpolacao-linear - treated bbr esmond data ap-ba 07-03-2023_longest_interval, LSTM": {
+        "RMSE": 35.09736828369173,
+        "MAE": 24.57874269135831,
+        "NRMSE": 0.1833262514142732
+    }
+}
