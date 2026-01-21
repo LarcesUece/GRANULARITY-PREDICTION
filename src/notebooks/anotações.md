@@ -1,0 +1,1 @@
+- existem dados faltantes na agg_10_minutes
