@@ -1,0 +1,24 @@
+DIA
+
+--- Desempenho: MLP ---
+RMSE (Erro Médio): 0.3045
+MAE  (Erro Absoluto): 0.2118
+------------------------------
+--- Desempenho: GRU ---
+RMSE (Erro Médio): 0.1700
+MAE  (Erro Absoluto): 0.1106
+------------------------------
+
+HORA
+
+--- Desempenho: MLP ---
+RMSE (Erro Médio): 0.0951
+MAE  (Erro Absoluto): 0.0561
+------------------------------
+--- Desempenho: GRU ---
+RMSE (Erro Médio): 0.0762
+MAE  (Erro Absoluto): 0.0387
+------------------------------
+
+
+conclusão: hora está mais eficiente
