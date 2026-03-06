@@ -38,9 +38,10 @@ nest-asyncio==1.6.0
 numpy==2.3.5
 opt_einsum==3.4.0
 optree==0.18.0
-packaging==25.0
+packaging @ file:///home/task_176104874243446/conda-bld/packaging_1761049080023/work
 pandas==2.3.3
 parso==0.8.5
+patsy==1.0.2
 pexpect==4.9.0
 pillow==12.0.0
 platformdirs==4.5.0
@@ -61,6 +62,7 @@ scipy==1.16.3
 setuptools==80.9.0
 six==1.17.0
 stack-data==0.6.3
+statsmodels==0.14.6
 tensorboard==2.20.0
 tensorboard-data-server==0.7.2
 tensorflow==2.20.0
