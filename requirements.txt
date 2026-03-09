@@ -43,7 +43,6 @@ numpy==2.3.5
 opt_einsum==3.4.0
 optree==0.18.0
 optuna==4.7.0
-packaging @ file:///home/task_176104874243446/conda-bld/packaging_1761049080023/work
 pandas==2.3.3
 parso==0.8.5
 patsy==1.0.2
