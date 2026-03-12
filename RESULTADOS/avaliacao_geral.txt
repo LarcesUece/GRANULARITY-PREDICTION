@@ -13,6 +13,22 @@ MAE  (Erro Absoluto): 0.0312
 SMAPE: 44.0314
 NRMSE: 0.0172
 ------------------------------
+GRU (SEM_ID)
+Desempenho do modelo para granularidade diária:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.1414
+MAE  (Erro Absoluto): 0.1062
+SMAPE: 35.8341
+NRMSE: 0.0850
+------------------------------
+Desempenho do modelo para granularidade horária:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.0581
+MAE  (Erro Absoluto): 0.0293
+SMAPE: 42.2442
+NRMSE: 0.0167
+------------------------------
+
 
 RNN:
 Desempenho do modelo para granularidade diária:
