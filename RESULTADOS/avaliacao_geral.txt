@@ -46,6 +46,38 @@ SMAPE: 50.0623
 NRMSE: 0.0185
 ------------------------------
 
+RNN (SEM ID):
+Desempenho do modelo para granularidade diária:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.1471
+MAE  (Erro Absoluto): 0.1086
+SMAPE: 36.0187
+NRMSE: 0.0884
+------------------------------
+Desempenho do modelo para granularidade horária:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.0599
+MAE  (Erro Absoluto): 0.0312
+SMAPE: 43.7775
+NRMSE: 0.0172
+------------------------------
+
+LSTM:
+Desempenho do modelo para granularidade diária:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.1485
+MAE  (Erro Absoluto): 0.1145
+SMAPE: 37.1668
+NRMSE: 0.0892
+------------------------------
+Desempenho do modelo para granularidade horária:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.0586
+MAE  (Erro Absoluto): 0.0294
+SMAPE: 43.1564
+NRMSE: 0.0168
+------------------------------
+
 LSTM(SEM ID):
 --- Desempenho: ---
 RMSE (Erro Médio): 0.1418
