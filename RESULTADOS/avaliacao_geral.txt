@@ -29,7 +29,6 @@ SMAPE: 42.2442
 NRMSE: 0.0167
 ------------------------------
 
-
 RNN:
 Desempenho do modelo para granularidade diária:
 --- Desempenho: ---
