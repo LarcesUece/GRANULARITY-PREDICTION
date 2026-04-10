@@ -2,7 +2,7 @@ import pandas as pd
 pd.set_option('future.no_silent_downcasting', True)
 import joblib
 inst = joblib.load("../scalers/instituicoes_validas.joblib")
-
+from sklearn.preprocessing import MinMaxScaler
 
 def complete_id(df):
     df = df.copy()

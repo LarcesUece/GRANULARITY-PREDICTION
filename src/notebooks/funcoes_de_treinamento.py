@@ -6,8 +6,7 @@ from keras.layers import Flatten,  Dropout
 from tensorflow import cast, float32,reduce_mean,maximum
 import tensorflow as tf
 from keras.backend import epsilon
-import pandas as pd
-pd.set_option('future.no_silent_downcasting', True)
+
 import os
 from tensorflow.keras.metrics import RootMeanSquaredError, MeanAbsoluteError
 import numpy as np
