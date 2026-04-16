@@ -3,7 +3,10 @@ pd.set_option('future.no_silent_downcasting', True)
 import joblib
 inst = joblib.load("../scalers/instituicoes_validas.joblib")
 from sklearn.preprocessing import MinMaxScaler
-
+import polars as pl
+import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
+import pyarrow as pa
 def complete_id(df):
     df = df.copy()
     
@@ -93,3 +96,61 @@ def sliding_window (df_series: pd.Series, inputs: int, outputs: int, step: int =
     # 4. Cria o DataFrame final
     df_windowed = pd.DataFrame(windowed_data, columns=x_cols + y_cols)
     return df_windowed
+
+
+
+def sliding_window_polars(df_series: pl.Series, inputs: int, outputs: int, step: int = 1) -> pl.DataFrame:
+    
+    total_window_size = inputs + outputs
+    
+    # 1. Validação nativa do Polars
+    if df_series.len() < total_window_size:
+        print(f"Erro: Tamanho dos dados ({df_series.len()}) é menor que a janela total ({total_window_size})")
+        return pl.DataFrame() # Retorna um DataFrame vazio
+
+    # 2. Conversão Zero-Copy (Transforma a Series em array instantaneamente)
+    arr = df_series.to_numpy()
+
+    # 3. Criação de janelas via memória virtual (sem clonar dados na RAM)
+    windows = sliding_window_view(arr, window_shape=total_window_size)
+    
+    # 4. Aplicação do salto (step) fatiando a matriz inteira de uma vez
+    if step > 1:
+        windows = windows[::step]
+
+    # 5. Define os nomes das colunas
+    x_cols = [f"x_{j}" for j in range(inputs)]
+    y_cols = [f"y_{o}" for o in range(outputs)]
+    colunas_finais = x_cols + y_cols
+    
+    # 6. Instancia o Polars DataFrame diretamente a partir da matriz 2D
+    # O orient="row" garante que o Polars leia as linhas corretamente
+    df_windowed = pl.DataFrame(windows, schema=colunas_finais, orient="row")
+    
+    return df_windowed
+
+
+
+from sklearn.preprocessing import MinMaxScaler
+
+def scaling_polars(df_series: pl.Series, mode: int = 0, scaler = None):
+    # 1. Conversão Zero-Copy para NumPy e redimensionamento 2D exigido pelo sklearn
+    dados_reshaped = df_series.to_numpy().reshape(-1, 1)
+    
+    if mode == 0:
+        scaler = MinMaxScaler()
+        dados_scaled = scaler.fit_transform(dados_reshaped)
+        
+        # Reconstrói a Polars Series mantendo o nome original
+        serie_scaled = pl.Series(name=df_series.name, values=dados_scaled.flatten())
+        return serie_scaled, scaler
+        
+    elif mode == 1:
+        if scaler is None:
+            raise ValueError("Erro: Um scaler treinado deve ser fornecido quando mode=1.")
+            
+        dados_scaled = scaler.transform(dados_reshaped)
+        
+        # Reconstrói a Polars Series mantendo o nome original
+        serie_scaled = pl.Series(name=df_series.name, values=dados_scaled.flatten())
+        return serie_scaled
