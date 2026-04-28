@@ -220,13 +220,9 @@ def criar_e_treinarGRU(dimensao,
                         path_modelo = None, 
                         path_metricas = None,
                         plot = True,
-                        verbose = True,
-                        virada = False):
+                        verbose = True):
     print("criando modelo...")
-    if virada:
-        gru = generate_GRU(input_len,2,output_len, dropout_rate, gru_units)
-    else:
-        gru = generate_GRU(1,input_len,output_len, dropout_rate, gru_units)
+    gru = generate_GRU(1,input_len,output_len, dropout_rate, gru_units)
 
     print("compilando modelo...")
     amplitude_global = np.max(y_train) - np.min(y_train)
@@ -253,7 +249,7 @@ def criar_e_treinarGRU(dimensao,
         epochs=epochs,
         batch_size=batch_size,
         validation_data=(X_val, y_val),
-        verbose=1
+        verbose=0
     )
     if verbose:
         print(

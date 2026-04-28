@@ -1,3 +1,7 @@
+################################
+#       DIAS 7-1              #
+################################
+
 GRU
 Carregando modelos...
 Desempenho do modelo para granularidade diária:
@@ -75,4 +79,89 @@ MAE  (Erro Absoluto): 0.0231
 SMAPE: 53.1338
 NRMSE: 0.0104
 Tempo de avaliação: 5.071672600999591 segundos para 41888880 amostras
+------------------------------
+
+
+################################
+#       DIAS 7-2              #
+################################
+
+
+GRU
+Carregando modelos...
+Desempenho do modelo para granularidade diária:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.2478
+MAE  (Erro Absoluto): 0.2090
+SMAPE: 34.9860
+NRMSE: 0.1921
+Tempo de avaliação: 0.21641556901158765 segundos para 4040 amostras
+------------------------------
+Desempenho do modelo para granularidade horária:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.1055
+MAE  (Erro Absoluto): 0.0688
+SMAPE: 52.0300
+NRMSE: 0.0191
+Tempo de avaliação: 0.7071073169936426 segundos para 2224896 amostras
+------------------------------
+Desempenho do modelo para granularidade 10minutos:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.0764
+MAE  (Erro Absoluto): 0.0355
+SMAPE: 54.5485
+NRMSE: 0.0764
+Tempo de avaliação: 8.856269641022664 segundos para 79585056 amostras
+------------------------------
+LSTM
+Carregando modelos...
+Desempenho do modelo para granularidade diária:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.2479
+MAE  (Erro Absoluto): 0.2092
+SMAPE: 34.7074
+NRMSE: 0.1921
+Tempo de avaliação: 0.1640970070147887 segundos para 4040 amostras
+------------------------------
+Desempenho do modelo para granularidade horária:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.1056
+MAE  (Erro Absoluto): 0.0701
+SMAPE: 52.2498
+NRMSE: 0.0191
+Tempo de avaliação: 0.6284421780146658 segundos para 2224896 amostras
+------------------------------
+Desempenho do modelo para granularidade 10minutos:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.0765
+MAE  (Erro Absoluto): 0.0374
+SMAPE: 56.0359
+NRMSE: 0.0765
+Tempo de avaliação: 8.393170259019826 segundos para 79585056 amostras
+------------------------------
+RNN
+Carregando modelos...
+Desempenho do modelo para granularidade diária:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.2484
+MAE  (Erro Absoluto): 0.2094
+SMAPE: 34.5121
+NRMSE: 0.1925
+Tempo de avaliação: 0.1712456819950603 segundos para 4040 amostras
+------------------------------
+Desempenho do modelo para granularidade horária:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.1059
+MAE  (Erro Absoluto): 0.0702
+SMAPE: 52.2016
+NRMSE: 0.0191
+Tempo de avaliação: 0.6142303869710304 segundos para 2224896 amostras
+------------------------------
+Desempenho do modelo para granularidade 10minutos:
+--- Desempenho: ---
+RMSE (Erro Médio): 0.0774
+MAE  (Erro Absoluto): 0.0360
+SMAPE: 56.9465
+NRMSE: 0.0774
+Tempo de avaliação: 5.140864059969317 segundos para 79585056 amostras
 ------------------------------
