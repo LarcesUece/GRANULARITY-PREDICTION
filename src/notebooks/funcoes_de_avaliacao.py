@@ -21,35 +21,89 @@ def avaliar_modelo(y_real, y_previsto, tempo = 0.0, verbose = False):
         print(f"Tempo de avaliação: {tempo} segundos para {len(y_real)} amostras")
         
         print("-" * 30)
-    return { "RMSE":rmse,"MAE": mae, "NRMSE": nrmse, "SMAPE": _smape}
+    return { "RMSE":rmse,"MAE": mae, "NRMSE": nrmse, "SMAPE": _smape, "TIME": tempo}
 
 def comparar_desempeho_granularidade(X_test_d, X_test_h, X_test_10m, y_test_d, y_test_h, y_test_10m, MODELO_d, MODELO_h,MODELO_10MIN):
     print("Carregando modelos...")
-    start_time = perf_counter()
+    
     #---#
     MODELO_h.predict(X_test_h[:1], verbose=0)  # Previsão de teste para "aquecer" o modelo
     MODELO_d.predict(X_test_d[:1], verbose=0)  # Previsão de teste para "aquecer" o modelo
     MODELO_10MIN.predict(X_test_10m[:1], verbose=0)  # Previsão de teste para "aquecer" o modelo
     #---#
-    y_pred_d = MODELO_d.predict(X_test_d, verbose=0)
-    d_time = perf_counter() - start_time
-    start_time = perf_counter()
-    y_pred_h = MODELO_h.predict(X_test_h, verbose=0)
-    h_time = perf_counter() - start_time
-    start_time = perf_counter()
-    y_pred_10m = MODELO_10MIN.predict(X_test_10m, verbose=0)
-    m_time = perf_counter() - start_time
+    mean_d = np.zeros(5)
+    mean_h = np.zeros(5)
+    mean_10m = np.zeros(5)
+    n = 10
+    for _ in range(n):
+        start_time = perf_counter() 
+        y_pred_d = MODELO_d.predict(X_test_d, verbose=0)
+        d_time = perf_counter() - start_time
+        start_time = perf_counter()
+        y_pred_h = MODELO_h.predict(X_test_h, verbose=0)
+        h_time = perf_counter() - start_time
+        start_time = perf_counter()
+        y_pred_10m = MODELO_10MIN.predict(X_test_10m, verbose=0)
+        m_time = perf_counter() - start_time
+
+        dict_d = avaliar_modelo(y_test_d.flatten(), y_pred_d.flatten(),d_time)
+        dict_h = avaliar_modelo(y_test_h.flatten(), y_pred_h.flatten(),h_time)
+        dict_10m = avaliar_modelo(y_test_10m.flatten(), y_pred_10m.flatten(),m_time)
+
+        mean_d[0] += dict_d["RMSE"]
+        mean_d[1] += dict_d["MAE"]
+        mean_d[2] += dict_d["NRMSE"]
+        mean_d[3] += dict_d["SMAPE"]
+        mean_d[4] += dict_d["TIME"]
+
+        mean_h[0] += dict_h["RMSE"]
+        mean_h[1] += dict_h["MAE"]
+        mean_h[2] += dict_h["NRMSE"]
+        mean_h[3] += dict_h["SMAPE"]
+        mean_h[4] += dict_h["TIME"]
+
+        mean_10m[0] += dict_10m["RMSE"]
+        mean_10m[1] += dict_10m["MAE"]
+        mean_10m[2] += dict_10m["NRMSE"]
+        mean_10m[3] += dict_10m["SMAPE"]
+        mean_10m[4] += dict_10m["TIME"]
+        
+        
+
+
+    mean_d /= n
+    mean_h /= n
+    mean_10m /= n
+    
+
+    dict_d = {"RMSE":mean_d[0],"MAE":mean_d[1],"NRMSE":mean_d[2],"SMAPE":mean_d[3],"TIME":mean_d[4]}
+    dict_h = {"RMSE":mean_h[0],"MAE":mean_h[1],"NRMSE":mean_h[2],"SMAPE":mean_h[3],"TIME":mean_h[4]}
+    dict_10m = {"RMSE":mean_10m[0],"MAE":mean_10m[1],"NRMSE":mean_10m[2],"SMAPE":mean_10m[3],"TIME":mean_10m[4]}    
+
+
 
     print(f"Desempenho do modelo para granularidade diária:")
-    resultado_d = avaliar_modelo(y_test_d.flatten(), y_pred_d.flatten(), d_time, verbose=True)
+    print(f"RMSE: {mean_d[0]}")
+    print(f"MAE: {mean_d[1]}")
+    print(f"NRMSE: {mean_d[2]}")
+    print(f"SMAPE: {mean_d[3]}")
+    print(f"TIME: {mean_d[4]} para {len(X_test_d)} amostras")
     
     print(f"Desempenho do modelo para granularidade horária:")
-    resultado_h = avaliar_modelo(y_test_h.flatten(), y_pred_h.flatten(), h_time, verbose=True)
-
-    print(f"Desempenho do modelo para granularidade 10minutos:")
-    resultado_10m = avaliar_modelo(y_test_10m.flatten(), y_pred_10m.flatten(), m_time, verbose=True)    
+    print(f"RMSE: {mean_h[0]}")
+    print(f"MAE: {mean_h[1]}")
+    print(f"NRMSE: {mean_h[2]}")
+    print(f"SMAPE: {mean_h[3]}")
+    print(f"TIME: {mean_h[4]} para {len(X_test_h)} amostras")
     
-    return {"Diario": resultado_d, "Horario": resultado_h, "10minutos:": resultado_10m}
+    print(f"Desempenho do modelo para granularidade 10minutos:")
+    print(f"RMSE: {mean_10m[0]}")
+    print(f"MAE: {mean_10m[1]}")
+    print(f"NRMSE: {mean_10m[2]}")
+    print(f"SMAPE: {mean_10m[3]}")
+    print(f"TIME: {mean_10m[4]} para {len(X_test_10m)} amostras")
+    
+    return {"Diario": dict_d, "Horario": dict_h, "10minutos:": dict_10m}
 
 def separar_dados_por_instituicao(inst, X_test, y_test =  None):
     idx = np.where(X_test[:,0] == inst)[0]
