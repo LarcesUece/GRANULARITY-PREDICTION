@@ -1,12 +1,79 @@
 import pandas as pd
-pd.set_option('future.no_silent_downcasting', True)
-import joblib
-inst = joblib.load("../scalers/instituicoes_validas.joblib")
-from sklearn.preprocessing import MinMaxScaler
-import polars as pl
 import numpy as np
-from numpy.lib.stride_tricks import sliding_window_view
-import pyarrow as pa
+pd.set_option('future.no_silent_downcasting', True)
+from sklearn.preprocessing import MinMaxScaler
+from glob import glob
+from os import path,getcwd
+
+def read_data(folder: str, features: list[str] = ["id_time", "n_bytes"]   ) -> list[pd.DataFrame]:
+    print(f"1. Python is running from: {getcwd()}")
+    print(f"2. Is the target path valid? {path.exists(folder)}")
+    csv_files = glob(path.join(folder, "*.csv"))
+
+    lista_dia = []
+    for file in csv_files:
+        filename = str(path.splitext(path.basename(file))[0])
+        df = pd.read_csv(file)
+        for f in features:
+            if f not in df.columns:
+                print(f"Feature '{f}' not found in file '{filename}'. Adding it with NaN values.")
+                df[f] = np.nan
+        df = df[features].sort_values(by=features[0])
+        df["id_institution"] = filename
+        lista_dia.append(df)
+
+    print("\n--- All dataframes loaded successfully! ---")
+    return pd.concat(lista_dia, ignore_index=True)
+
+
+def complete_id_2(df):
+    df = df.copy()
+    
+    # 1. Cria um MultiIndex com TODAS as combinações teóricas possíveis 
+    # (24 horas * 60 minutos = 1440 linhas por ID)
+    ids_unicos = df['ID'].unique()
+    horas = range(24)
+    minutos = range(6)
+    
+    # Gera a malha cartesiana (ID x Hora x Minuto)
+    multi_idx = pd.MultiIndex.from_product(
+        [ids_unicos, horas, minutos], 
+        names=['ID', 'hour_id', 'min_id']
+    )
+    
+    # 2. Configura a base atual para usar essas três colunas como índice e remove duplicatas
+    # O drop_duplicates evita o erro fatal se a sua base original tiver duas marcações exatas no mesmo minuto
+    df = df.drop_duplicates(subset=['ID', 'hour_id', 'min_id'])
+    df = df.set_index(['ID', 'hour_id', 'min_id'])
+    
+    # 3. O REINDEX MÁGICO: Ele vai criar as linhas em branco para as horas/minutos que não existem
+    df_full = df.reindex(multi_idx).reset_index()
+    
+    # 4. Preenchimento (Fill)
+    # Primeiro agrupa pelo ID para garantir que o bfill/ffill de uma instituição/dia não vaze para outra
+    def preencher_gaps(g):
+        # Garante a ordem cronológica
+        g = g.sort_values(['hour_id', 'min_id'])
+        
+        # Preenche a id_institution 
+
+        g['id_institution'] = g['id_institution'].bfill().ffill() 
+        g['n_bytes_day'] = g['n_bytes_day'].bfill().ffill()     
+        # Preenche as colunas de bytes (ajuste os nomes conforme sua base)
+        g['n_bytes_hour'] = g['n_bytes_hour'].fillna(g['n_bytes_day']/24)
+        g['n_bytes_10minutes'] = g['n_bytes_10minutes'].fillna(g['n_bytes_hour']/6)
+            
+        # Preenche o resto (exceto as chaves de índice)
+        for col in g.columns:
+            if col not in ['ID', 'hour_id', 'min_id', 'id_institution', 'n_bytes_hour', 'n_bytes_10minutes']:
+                g[col] = g[col].ffill().bfill()
+                
+        return g
+
+    # Aplica o preenchimento por grupo (por ID)
+    df_out = df_full.groupby('ID', group_keys=False).apply(preencher_gaps)
+    
+    return df_out.reset_index(drop=True)
 
 def complete_id(df):
     df = df.copy()

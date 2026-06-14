@@ -2,18 +2,18 @@ import pandas as pd
 pd.set_option('future.no_silent_downcasting', True)
 from keras.models import Model
 from keras.layers import Input, Dense, GRU as GRU_layer, LSTM as LSTM_layer, SimpleRNN as RNN_layer
+# pyrefly: ignore [missing-import]
 from keras.layers import Flatten,  Dropout
 from tensorflow import cast, float32,reduce_mean,maximum
 import tensorflow as tf
-from keras.backend import epsilon
 import matplotlib.pyplot as plt
+from keras.backend import epsilon
+import pandas as pd
+pd.set_option('future.no_silent_downcasting', True)
 import os
 from tensorflow.keras.metrics import RootMeanSquaredError, MeanAbsoluteError
 import numpy as np
 import optuna
-import joblib
-import gc
-inst = joblib.load("../scalers/instituicoes_validas.joblib")
 
 
 def generate_GRU(n_timesteps, n_features, n_outputs, dropout_rate=0.2, gru_units=64):
@@ -119,10 +119,6 @@ def smape(y_true, y_pred):
     # epsilon é usado para evitar divisão por zero
     return 100.0 * reduce_mean(diff / maximum(add, epsilon()))
 
-
-##################################################################
-#_____________________FUNÇÕES DE TREINAMENTO_____________________#
-##################################################################
 
 
 def criar_e_treinarMLP(dimensao,
@@ -471,13 +467,6 @@ def criar_e_treinarRNN(dimensao,
     return history
 
 
-
-################################################################
-#_____________OTIMIZAÇÃO DE HIPERPARÂMETROS____________________#
-################################################################
-
-
-
 def otimizar_GRU(X_train, 
                  y_train, 
                  X_val, 
@@ -490,7 +479,7 @@ def otimizar_GRU(X_train,
     def objective(trial):
         # 1. Definir o espaço de busca que será passado para a sua função
         # Obs: Você precisará adicionar 'epochs' e 'batch_size' na assinatura da sua função 'criar_e_treinarMLP'
-        batch_size = trial.suggest_categorical('batch_size', [16, 32, 64])
+        batch_size = trial.suggest_categorical('batch_size', [16, 32])
         epochs = trial.suggest_int('epochs', 10, 30, step=10)
         dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5)
         gru_units = trial.suggest_int('gru_units', 32, 128)
@@ -512,16 +501,24 @@ def otimizar_GRU(X_train,
                 path_modelo= None,
                 plot=False,
                 verbose=False
-)
-            return history.history["val_nrmse"][-1] # O Optuna vai tentar minimizar este valor
+            )
+            score = history.history["val_nrmse"][-1] # O Optuna vai tentar minimizar este valor
+            del history # Garante a remoção da referência ao modelo
+            return score
             
         except Exception as e:
             # Poda o teste se a rede explodir (NaN) ou der erro
             raise optuna.exceptions.TrialPruned()
+        finally:
+            if 'history' in locals():
+                del history
+            tf.keras.backend.clear_session()
+            import gc
+            gc.collect()
 
     # 2. Criar e rodar o estudo
     study = optuna.create_study(direction='minimize', study_name="Otimizacao_GRU")
-    study.optimize(objective, n_trials=20) # Define quantas variações testar
+    study.optimize(objective, n_trials=6) # Define quantas variações testar
 
     print(f"\nMelhor NRMSE: {study.best_value}")
     print(f"Melhores parâmetros: {study.best_params}")
@@ -554,7 +551,7 @@ def otimizar_LSTM(X_train,
     def objective(trial):
         # 1. Definir o espaço de busca que será passado para a sua função
         # Obs: Você precisará adicionar 'epochs' e 'batch_size' na assinatura da sua função 'criar_e_treinarMLP'
-        batch_size = trial.suggest_categorical('batch_size', [16, 32, 64])
+        batch_size = trial.suggest_categorical('batch_size', [16, 32])
         epochs = trial.suggest_int('epochs', 10, 30, step=10)
         dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5)
         lstm_units = trial.suggest_int('lstm_units', 32, 128)
@@ -576,16 +573,24 @@ def otimizar_LSTM(X_train,
                 path_modelo= None,
                 plot=False,
                 verbose=False
-)
-            return history.history["val_nrmse"][-1] # O Optuna vai tentar minimizar este valor
+            )
+            score = history.history["val_nrmse"][-1] # O Optuna vai tentar minimizar este valor
+            del history # Garante a remoção da referência ao modelo
+            return score
             
         except Exception as e:
             # Poda o teste se a rede explodir (NaN) ou der erro
             raise optuna.exceptions.TrialPruned()
+        finally:
+            if 'history' in locals():
+                del history
+            tf.keras.backend.clear_session()
+            import gc
+            gc.collect()
 
     # 2. Criar e rodar o estudo
     study = optuna.create_study(direction='minimize', study_name="Otimizacao_LSTM")
-    study.optimize(objective, n_trials=20) # Define quantas variações testar
+    study.optimize(objective, n_trials=6) # Define quantas variações testar
 
     print(f"\nMelhor NRMSE: {study.best_value}")
     print(f"Melhores parâmetros: {study.best_params}")
@@ -618,7 +623,7 @@ def otimizar_RNN(X_train,
         def objective(trial):
             # 1. Definir o espaço de busca que será passado para a sua função
             # Obs: Você precisará adicionar 'epochs' e 'batch_size' na assinatura da sua função 'criar_e_treinarMLP'
-            batch_size = trial.suggest_categorical('batch_size', [16, 32, 64])
+            batch_size = trial.suggest_categorical('batch_size', [16, 32])
             epochs = trial.suggest_int('epochs', 10, 30, step=10)
             dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5)
             rnn_units = trial.suggest_int('rnn_units', 32, 128)
@@ -640,16 +645,24 @@ def otimizar_RNN(X_train,
                     path_modelo= None,
                     plot=False,
                     verbose=False
-    )
-                return history.history["val_nrmse"][-1] # O Optuna vai tentar minimizar este valor
+                )
+                score = history.history["val_nrmse"][-1] # O Optuna vai tentar minimizar este valor
+                del history # Garante a remoção da referência ao modelo
+                return score
                 
             except Exception as e:
                 # Poda o teste se a rede explodir (NaN) ou der erro
                 raise optuna.exceptions.TrialPruned()
+            finally:
+                if 'history' in locals():
+                    del history
+                tf.keras.backend.clear_session()
+                import gc
+                gc.collect()
     
         # 2. Criar e rodar o estudo
         study = optuna.create_study(direction='minimize', study_name="Otimizacao_RNN")
-        study.optimize(objective, n_trials=20) # Define quantas variações testar
+        study.optimize(objective, n_trials=6) # Define quantas variações testar
     
         print(f"\nMelhor NRMSE: {study.best_value}")
         print(f"Melhores parâmetros: {study.best_params}")
@@ -683,7 +696,7 @@ def otimizar_MLP(X_train,
     def objective(trial):
         # 1. Definir o espaço de busca que será passado para a sua função
         # Obs: Você precisará adicionar 'epochs' e 'batch_size' na assinatura da sua função 'criar_e_treinarMLP'
-        batch_size = trial.suggest_categorical('batch_size', [16, 32, 64])
+        batch_size = trial.suggest_categorical('batch_size', [16, 32])
         epochs = trial.suggest_int('epochs', 10, 30, step=10)
         dropout_rate = trial.suggest_float('dropout_rate', 0.1, 0.5)
         dense_units = trial.suggest_int('dense_units', 100, 500)
@@ -707,12 +720,20 @@ def otimizar_MLP(X_train,
                 path_modelo= None,
                 plot=False,
                 verbose=False
-)
-            return history.history["val_nrmse"][-1] # O Optuna vai tentar minimizar este valor
+            )
+            score = history.history["val_nrmse"][-1] # O Optuna vai tentar minimizar este valor
+            del history # Garante a remoção da referência ao modelo
+            return score
             
         except Exception as e:
             # Poda o teste se a rede explodir (NaN) ou der erro
             raise optuna.exceptions.TrialPruned()
+        finally:
+            if 'history' in locals():
+                del history
+            tf.keras.backend.clear_session()
+            import gc
+            gc.collect()
 
     # 2. Criar e rodar o estudo
     study = optuna.create_study(direction='minimize', study_name="Otimizacao_MLP")

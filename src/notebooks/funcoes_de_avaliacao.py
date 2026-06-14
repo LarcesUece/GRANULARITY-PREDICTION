@@ -1,12 +1,16 @@
-from sklearn.metrics import mean_squared_error, mean_absolute_error
-import math
 import pandas as pd
 pd.set_option('future.no_silent_downcasting', True)
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+import pandas as pd
 pd.set_option('future.no_silent_downcasting', True)
+from tensorflow.keras.metrics import RootMeanSquaredError, MeanAbsoluteError
 import numpy as np
+import math
 from funcoes_de_treinamento import smape
-from time import time, perf_counter
-def avaliar_modelo(y_real, y_previsto, tempo = 0.0, verbose = False):
+
+
+
+def avaliar_modelo(y_real, y_previsto, verbose = False):
     mse = mean_squared_error(y_real, y_previsto)
     rmse = math.sqrt(mse)
     nrmse = rmse / (max(y_real) - min(y_real))
@@ -18,38 +22,25 @@ def avaliar_modelo(y_real, y_previsto, tempo = 0.0, verbose = False):
         print(f"MAE  (Erro Absoluto): {mae:.4f}")
         print(f"SMAPE: {_smape:.4f}")
         print(f"NRMSE: {nrmse:.4f}")
-        print(f"Tempo de avaliação: {tempo} segundos para {len(y_real)} amostras")
-        
         print("-" * 30)
-    return { "RMSE":rmse,"MAE": mae, "NRMSE": nrmse, "SMAPE": _smape}
+    return {"RMSE": rmse, "MAE": mae, "NRMSE": nrmse, "SMAPE": _smape}
 
 def comparar_desempeho_granularidade(X_test_d, X_test_h, X_test_10m, y_test_d, y_test_h, y_test_10m, MODELO_d, MODELO_h,MODELO_10MIN):
     print("Carregando modelos...")
-    start_time = perf_counter()
-    #---#
-    MODELO_h.predict(X_test_h[:1], verbose=0)  # Previsão de teste para "aquecer" o modelo
-    MODELO_d.predict(X_test_d[:1], verbose=0)  # Previsão de teste para "aquecer" o modelo
-    MODELO_10MIN.predict(X_test_10m[:1], verbose=0)  # Previsão de teste para "aquecer" o modelo
-    #---#
-    y_pred_d = MODELO_d.predict(X_test_d, verbose=0)
-    d_time = perf_counter() - start_time
-    start_time = perf_counter()
-    y_pred_h = MODELO_h.predict(X_test_h, verbose=0)
-    h_time = perf_counter() - start_time
-    start_time = perf_counter()
-    y_pred_10m = MODELO_10MIN.predict(X_test_10m, verbose=0)
-    m_time = perf_counter() - start_time
-
+    y_pred_d = MODELO_d.predict(X_test_d)
+    y_pred_h = MODELO_h.predict(X_test_h)
+    y_pred_10m = MODELO_10MIN.predict(X_test_10m)
+    
     print(f"Desempenho do modelo para granularidade diária:")
-    resultado_d = avaliar_modelo(y_test_d.flatten(), y_pred_d.flatten(), d_time, verbose=True)
+    resultado_d = avaliar_modelo(y_test_d.flatten(), y_pred_d.flatten(), verbose=True)
     
     print(f"Desempenho do modelo para granularidade horária:")
-    resultado_h = avaliar_modelo(y_test_h.flatten(), y_pred_h.flatten(), h_time, verbose=True)
+    resultado_h = avaliar_modelo(y_test_h.flatten(), y_pred_h.flatten(), verbose=True)
 
     print(f"Desempenho do modelo para granularidade 10minutos:")
-    resultado_10m = avaliar_modelo(y_test_10m.flatten(), y_pred_10m.flatten(), m_time, verbose=True)    
+    resultado_10m = avaliar_modelo(y_test_10m.flatten(), y_pred_10m.flatten(), verbose=True)    
     
-    return {"Diario": resultado_d, "Horario": resultado_h, "10minutos:": resultado_10m}
+    return {"Diario": resultado_d, "Horario": resultado_h, "10minutos": resultado_10m}
 
 def separar_dados_por_instituicao(inst, X_test, y_test =  None):
     idx = np.where(X_test[:,0] == inst)[0]
