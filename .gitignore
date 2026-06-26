@@ -2,3 +2,6 @@ data/
 src/.ipynb_checkpoints/
 MODELOS/
 .venv
+__pycache__/
+*.pyc
+RESULTADOS
