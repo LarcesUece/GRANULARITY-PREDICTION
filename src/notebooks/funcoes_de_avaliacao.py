@@ -1,21 +1,65 @@
+import gc
+
 import pandas as pd
 pd.set_option('future.no_silent_downcasting', True)
-from sklearn.metrics import mean_squared_error, mean_absolute_error
 import pandas as pd
 pd.set_option('future.no_silent_downcasting', True)
-from tensorflow.keras.metrics import RootMeanSquaredError, MeanAbsoluteError
 import numpy as np
-import math
+import torch
+from torch.utils.data import DataLoader, TensorDataset
 from funcoes_de_treinamento import smape
 
 
+def get_device():
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def _as_float_tensor(data, device):
+    if torch.is_tensor(data):
+        return data.to(device=device, dtype=torch.float32)
+    return torch.as_tensor(np.asarray(data), dtype=torch.float32, device=device)
+
+
+def _clear_torch_memory():
+    gc.collect()
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.synchronize()
+        except RuntimeError:
+            pass
+        torch.cuda.empty_cache()
+        try:
+            torch.cuda.ipc_collect()
+        except RuntimeError:
+            pass
+
+
+def _loader_pin_memory(tensor, device):
+    return device.type == "cuda" and torch.is_tensor(tensor) and tensor.device.type == "cpu"
+
+
+def _move_batch(batch, device):
+    if batch.device == device:
+        return batch
+    return batch.to(device=device, dtype=torch.float32, non_blocking=True)
+
 
 def avaliar_modelo(y_real, y_previsto, verbose = False):
-    mse = mean_squared_error(y_real, y_previsto)
-    rmse = math.sqrt(mse)
-    nrmse = rmse / (max(y_real) - min(y_real))
-    mae = mean_absolute_error(y_real, y_previsto)
-    _smape = smape(y_real, y_previsto) 
+    device = get_device()
+    y_real_tensor = _as_float_tensor(y_real, device)
+    y_previsto_tensor = _as_float_tensor(y_previsto, device)
+    diff = y_real_tensor - y_previsto_tensor
+    mse = torch.mean(diff ** 2)
+    rmse = torch.sqrt(mse)
+    data_range = torch.max(y_real_tensor) - torch.min(y_real_tensor)
+    nrmse = rmse / torch.clamp(data_range, min=1e-7)
+    mae = torch.mean(torch.abs(diff))
+    _smape = smape(y_real_tensor, y_previsto_tensor)
+
+    rmse = float(rmse.detach().cpu())
+    mae = float(mae.detach().cpu())
+    nrmse = float(nrmse.detach().cpu())
+    _smape = float(_smape.detach().cpu())
     if verbose:
         print(f"--- Desempenho: ---")
         print(f"RMSE (Erro Médio): {rmse:.4f}")
@@ -25,21 +69,76 @@ def avaliar_modelo(y_real, y_previsto, verbose = False):
         print("-" * 30)
     return {"RMSE": rmse, "MAE": mae, "NRMSE": nrmse, "SMAPE": _smape}
 
+
+def _avaliar_modelo_em_batches(X_test, y_test, modelo, batch_size=4096, verbose=False):
+    device = modelo.device
+    X_tensor = torch.as_tensor(X_test, dtype=torch.float32)
+    y_tensor = torch.as_tensor(y_test, dtype=torch.float32)
+    loader = DataLoader(
+        TensorDataset(X_tensor, y_tensor),
+        batch_size=batch_size,
+        shuffle=False,
+        pin_memory=_loader_pin_memory(X_tensor, device),
+    )
+
+    total_sq_error = 0.0
+    total_abs_error = 0.0
+    total_smape = 0.0
+    total_elements = 0
+    data_min = None
+    data_max = None
+
+    modelo.model.eval()
+    with torch.no_grad():
+        for X_batch, y_batch in loader:
+            X_batch = _move_batch(X_batch, device)
+            y_batch = _move_batch(y_batch, device)
+            y_pred = modelo.model(X_batch)
+            diff = y_batch - y_pred
+            total_sq_error += float(torch.sum(diff ** 2).detach().cpu())
+            total_abs_error += float(torch.sum(torch.abs(diff)).detach().cpu())
+            denominator = torch.maximum(
+                torch.abs(y_batch) + torch.abs(y_pred),
+                torch.tensor(1e-7, device=device),
+            )
+            total_smape += float(torch.sum(torch.abs(diff) / denominator).detach().cpu())
+            total_elements += diff.numel()
+
+            batch_min = torch.min(y_batch).detach()
+            batch_max = torch.max(y_batch).detach()
+            data_min = batch_min if data_min is None else torch.minimum(data_min, batch_min)
+            data_max = batch_max if data_max is None else torch.maximum(data_max, batch_max)
+
+    mse = total_sq_error / max(total_elements, 1)
+    rmse = float(np.sqrt(mse))
+    mae = total_abs_error / max(total_elements, 1)
+    data_range = float((data_max - data_min).detach().cpu()) if data_min is not None else 0.0
+    nrmse = rmse / max(data_range, 1e-7)
+    _smape = 100.0 * total_smape / max(total_elements, 1)
+
+    if verbose:
+        print(f"--- Desempenho: ---")
+        print(f"RMSE (Erro Médio): {rmse:.4f}")
+        print(f"MAE  (Erro Absoluto): {mae:.4f}")
+        print(f"SMAPE: {_smape:.4f}")
+        print(f"NRMSE: {nrmse:.4f}")
+        print("-" * 30)
+    _clear_torch_memory()
+    return {"RMSE": rmse, "MAE": mae, "NRMSE": nrmse, "SMAPE": _smape}
+
+
 def comparar_desempeho_granularidade(X_test_d, X_test_h, X_test_10m, y_test_d, y_test_h, y_test_10m, MODELO_d, MODELO_h,MODELO_10MIN):
     print("Carregando modelos...")
-    y_pred_d = MODELO_d.predict(X_test_d)
-    y_pred_h = MODELO_h.predict(X_test_h)
-    y_pred_10m = MODELO_10MIN.predict(X_test_10m)
-    
+
     print(f"Desempenho do modelo para granularidade diária:")
-    resultado_d = avaliar_modelo(y_test_d.flatten(), y_pred_d.flatten(), verbose=True)
-    
+    resultado_d = _avaliar_modelo_em_batches(X_test_d, y_test_d, MODELO_d, verbose=True)
+
     print(f"Desempenho do modelo para granularidade horária:")
-    resultado_h = avaliar_modelo(y_test_h.flatten(), y_pred_h.flatten(), verbose=True)
+    resultado_h = _avaliar_modelo_em_batches(X_test_h, y_test_h, MODELO_h, verbose=True)
 
     print(f"Desempenho do modelo para granularidade 10minutos:")
-    resultado_10m = avaliar_modelo(y_test_10m.flatten(), y_pred_10m.flatten(), verbose=True)    
-    
+    resultado_10m = _avaliar_modelo_em_batches(X_test_10m, y_test_10m, MODELO_10MIN, verbose=True)
+
     return {"Diario": resultado_d, "Horario": resultado_h, "10minutos": resultado_10m}
 
 def separar_dados_por_instituicao(inst, X_test, y_test =  None):
@@ -85,4 +184,3 @@ Avaliando instituição {i}... \
 
         
         
-

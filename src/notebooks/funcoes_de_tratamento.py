@@ -1,9 +1,14 @@
 import pandas as pd
 import numpy as np
+import torch
 pd.set_option('future.no_silent_downcasting', True)
 from sklearn.preprocessing import MinMaxScaler
 from glob import glob
 from os import path,getcwd
+
+
+def get_device():
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def read_data(folder: str, features: list[str] = ["id_time", "n_bytes"]   ) -> list[pd.DataFrame]:
     print(f"1. Python is running from: {getcwd()}")
@@ -130,15 +135,23 @@ def treino_val_teste(df = pd.Series, t_treino = 0, t_teste = 0, t_val = 0):
     return  df[:int(t_treino*len(df))], df[int(t_treino*len(df)):int((t_treino + t_val)*len(df))]  , df[int((t_treino + t_val)*len(df)):]
 
 def scaling(df_series: pd.Series, mode = 0, scaler = None) -> pd.Series:
+    device = get_device()
+    dados_np = df_series.to_numpy(dtype=np.float32).reshape(-1, 1)
     if mode == 0:
         scaler = MinMaxScaler()
-        dados_reshaped = df_series.values.reshape(-1, 1)
-        dados_scaled = scaler.fit_transform(dados_reshaped)
-        return pd.Series(dados_scaled.flatten(), index=df_series.index, name=df_series.name),scaler
+        scaler.fit(dados_np)
+        dados_tensor = torch.as_tensor(dados_np, dtype=torch.float32, device=device)
+        scale = torch.as_tensor(scaler.scale_, dtype=torch.float32, device=device)
+        min_offset = torch.as_tensor(scaler.min_, dtype=torch.float32, device=device)
+        dados_scaled = dados_tensor * scale + min_offset
+        return pd.Series(dados_scaled.detach().cpu().numpy().flatten(), index=df_series.index, name=df_series.name),scaler
     elif mode == 1:
-        dados_reshaped = df_series.values.reshape(-1, 1)
-        dados_scaled = scaler.transform(dados_reshaped)
-        return pd.Series(dados_scaled.flatten(), index=df_series.index, name=df_series.name)     
+        dados_tensor = torch.as_tensor(dados_np, dtype=torch.float32, device=device)
+        scale = torch.as_tensor(scaler.scale_, dtype=torch.float32, device=device)
+        min_offset = torch.as_tensor(scaler.min_, dtype=torch.float32, device=device)
+        dados_scaled = dados_tensor * scale + min_offset
+        return pd.Series(dados_scaled.detach().cpu().numpy().flatten(), index=df_series.index, name=df_series.name)
+    raise ValueError("mode must be 0 (fit/transform) or 1 (transform)")
 
 def sliding_window (df_series: pd.Series, inputs: int, outputs: int, step: int = 1) -> pd.DataFrame:
 
@@ -149,18 +162,21 @@ def sliding_window (df_series: pd.Series, inputs: int, outputs: int, step: int =
         print(f"Erro: Tamanho dos dados ({len(df_series)}) é menor que a janela total ({total_window_size})")
         return pd.DataFrame() # Retorna um DataFrame vazio
 
-    # 2. Cria as janelas (sliding windows)
-    windowed_data = []
-    # Itera do primeiro índice inicial possível até o último
-    for i in range(0, len(df_series) - total_window_size + 1, step):
-        # A fatia vai de 'i' até 'i + tamanho_total'
-        window_slice = df_series.iloc[i : i + total_window_size].values
-        windowed_data.append(window_slice)
+    device = get_device()
+    series_tensor = torch.as_tensor(
+        df_series.to_numpy(dtype=np.float32),
+        dtype=torch.float32,
+        device=device,
+    )
+    windowed_tensor = series_tensor.unfold(0, total_window_size, step).contiguous()
 
     # 3. Define os nomes das colunas
     x_cols = [f"x_{j}" for j in range(inputs)]
     y_cols = [f"y_{o}" for o in range(outputs)]
     
     # 4. Cria o DataFrame final
-    df_windowed = pd.DataFrame(windowed_data, columns=x_cols + y_cols)
+    df_windowed = pd.DataFrame(
+        windowed_tensor.detach().cpu().numpy(),
+        columns=x_cols + y_cols,
+    )
     return df_windowed
