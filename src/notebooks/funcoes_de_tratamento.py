@@ -4,6 +4,7 @@ pd.set_option('future.no_silent_downcasting', True)
 from sklearn.preprocessing import MinMaxScaler
 from glob import glob
 from os import path,getcwd
+from sklearn.neighbors import KNeighborsRegressor
 
 def read_data(folder: str, features: list[str] = ["id_time", "n_bytes"]   ) -> list[pd.DataFrame]:
     print(f"1. Python is running from: {getcwd()}")
@@ -38,7 +39,53 @@ def scaling(df_series: pd.Series, mode = 0, scaler = None) -> pd.Series:
     elif mode == 1:
         dados_reshaped = df_series.values.reshape(-1, 1)
         dados_scaled = scaler.transform(dados_reshaped)
-        return pd.Series(dados_scaled.flatten(), index=df_series.index, name=df_series.name)     
+        return pd.Series(dados_scaled.flatten(), index=df_series.index, name=df_series.name)    
+
+
+
+def granufill(df_greater:pd.DataFrame,df_less:pd.DataFrame, merging_features: list, target_feature: str, gran_diff: int ) -> pd.DataFrame:
+    try:
+        df_merged = df_less.merge(df_greater, on=merging_features, how="left", suffixes=(None,"_greater") )
+        df_merged[target_feature] = df_merged[target_feature].fillna(df_merged[f"{target_feature}_greater"] / gran_diff)
+        return df_merged[df_less.columns]   
+    except Exception as e:
+        print(f"Erro ao preencher granularidade: {e}")
+        return df_less 
+
+
+def knn_fill_missing(df_series: pd.Series, k: int = 3, weights: str = 'distance') -> pd.Series:
+    """
+    Preenche valores ausentes (NaN) em uma série temporal univariada 
+    usando K-Nearest Neighbors (KNN) baseado no índice de tempo.
+    """
+    series_filled = df_series.copy()
+    
+    missing_mask = series_filled.isna()
+    
+    if not missing_mask.any():
+        return series_filled
+        
+    # X (features) será o índice (posição temporal), Y será o valor da série
+    X_train = np.where(~missing_mask)[0].reshape(-1, 1)
+    y_train = series_filled[~missing_mask].values
+    
+    X_test = np.where(missing_mask)[0].reshape(-1, 1)
+    
+    # Ajusta o K caso o número de não-nulos seja menor que K
+    n_neighbors = min(k, len(X_train))
+    if n_neighbors == 0:
+        return series_filled # Não há o que preencher se tudo for NaN
+    
+    # Treina o modelo KNN
+    knn = KNeighborsRegressor(n_neighbors=n_neighbors, weights=weights)
+    knn.fit(X_train, y_train)
+    
+    # Prediz os valores faltantes
+    predicted_values = knn.predict(X_test)
+    series_filled.iloc[np.where(missing_mask)[0]] = predicted_values
+        
+    return series_filled
+
 
 def sliding_window (df_series: pd.Series, inputs: int, outputs: int, step: int = 1) -> pd.DataFrame:
 
