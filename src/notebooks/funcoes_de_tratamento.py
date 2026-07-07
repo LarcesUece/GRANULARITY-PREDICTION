@@ -111,3 +111,105 @@ def sliding_window (df_series: pd.Series, inputs: int, outputs: int, step: int =
     # 4. Cria o DataFrame final
     df_windowed = pd.DataFrame(windowed_data, columns=x_cols + y_cols)
     return df_windowed
+
+
+def moving_average_fill(df_series: pd.Series, window_size: int = 3, center: bool = False) -> pd.Series:
+    """
+    Preenche valores ausentes (NaN) em uma série temporal univariada 
+    usando média móvel (rolling mean) do pandas.
+    """
+    series_filled = df_series.copy()
+    
+    if not series_filled.isna().any():
+        return series_filled
+        
+    # Calcula a média móvel usando pandas
+    moving_avg = series_filled.rolling(window=window_size, min_periods=1, center=center).mean()
+    
+    # Preenche os valores nulos com a média móvel
+    series_filled = series_filled.fillna(moving_avg)
+    
+    # Preenche possíveis valores nulos restantes nas bordas (ex: se min_periods não resolver tudo)
+    if series_filled.isna().any():
+        series_filled = series_filled.bfill().ffill()
+        
+    return series_filled
+
+
+def svd_fill_missing(df_series: pd.Series, window_size: int = 24, n_components: int = 2, max_iter: int = 5) -> pd.Series:
+    """
+    Preenche valores ausentes em uma série temporal univariada usando 
+    Singular Spectrum Analysis (SSA) baseado em SVD.
+    
+    Como o scikit-learn e o pandas não possuem um SVD nativo que suporte 
+    diretamente séries 1D com nulos, esta é uma implementação iterativa leve 
+    usando o numpy.linalg.svd.
+    """
+    series_filled = df_series.copy()
+    missing_mask = series_filled.isna()
+    
+    if not missing_mask.any():
+        return series_filled
+        
+    N = len(series_filled)
+    L = window_size
+    K = N - L + 1
+    
+    # Se a janela for maior que a série, recai para preenchimento simples
+    if K <= 0 or L <= 0:
+        return series_filled.fillna(series_filled.mean())
+        
+    # Chute inicial: preenche temporariamente com a média
+    vals = series_filled.fillna(series_filled.mean()).values
+    
+    for _ in range(max_iter):
+        # 1. Constrói a Matriz de Trajetória (Hankel Matrix)
+        X = np.column_stack([vals[i:i+L] for i in range(K)])
+        
+        # 2. Aplica o SVD
+        try:
+            U, s, Vt = np.linalg.svd(X, full_matrices=False)
+        except np.linalg.LinAlgError:
+            break # Se o SVD não convergir, interrompe o loop
+            
+        # 3. Trunca mantendo os componentes principais
+        k_comp = min(n_components, len(s))
+        X_rec = U[:, :k_comp] @ np.diag(s[:k_comp]) @ Vt[:k_comp, :]
+        
+        # 4. Reconstrói a série 1D (Média das diagonais invertidas)
+        vals_rec = np.zeros(N)
+        counts = np.zeros(N)
+        for i in range(L):
+            for j in range(K):
+                vals_rec[i+j] += X_rec[i, j]
+                counts[i+j] += 1
+        vals_rec /= counts
+        
+        # 5. Atualiza APENAS os valores nulos originais com a reconstrução
+        vals[missing_mask] = vals_rec[missing_mask]
+        
+    series_filled.iloc[:] = vals
+    return series_filled
+
+
+def moving_median_fill(df_series: pd.Series, window_size: int = 3, center: bool = False) -> pd.Series:
+    """
+    Preenche valores ausentes (NaN) em uma série temporal univariada 
+    usando mediana móvel (rolling median) do pandas.
+    """
+    series_filled = df_series.copy()
+    
+    if not series_filled.isna().any():
+        return series_filled
+        
+    # Calcula a mediana móvel usando pandas
+    moving_median = series_filled.rolling(window=window_size, min_periods=1, center=center).median()
+    
+    # Preenche os valores nulos com a mediana móvel
+    series_filled = series_filled.fillna(moving_median)
+    
+    # Preenche possíveis valores nulos restantes nas bordas (ex: se min_periods não resolver tudo)
+    if series_filled.isna().any():
+        series_filled = series_filled.bfill().ffill()
+        
+    return series_filled
