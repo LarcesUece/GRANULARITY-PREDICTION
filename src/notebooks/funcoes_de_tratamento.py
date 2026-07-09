@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-pd.set_option('future.no_silent_downcasting', True)
+
 from sklearn.preprocessing import MinMaxScaler
 from glob import glob
 from os import path,getcwd
@@ -46,6 +46,7 @@ def scaling(df_series: pd.Series, mode = 0, scaler = None) -> pd.Series:
 def granufill(df_greater:pd.DataFrame,df_less:pd.DataFrame, merging_features: list, target_feature: str, gran_diff: int ) -> pd.DataFrame:
     try:
         df_merged = df_less.merge(df_greater, on=merging_features, how="left", suffixes=(None,"_greater") )
+        print(df_merged.columns)
         df_merged[target_feature] = df_merged[target_feature].fillna(df_merged[f"{target_feature}_greater"] / gran_diff)
         return df_merged[df_less.columns]   
     except Exception as e:
@@ -53,10 +54,12 @@ def granufill(df_greater:pd.DataFrame,df_less:pd.DataFrame, merging_features: li
         return df_less 
 
 
-def knn_fill_missing(df_series: pd.Series, k: int = 3, weights: str = 'distance') -> pd.Series:
+def knn_fill_missing(df_series: pd.Series, timestamps, k: int = 3, weights: str = 'distance') -> pd.Series:
     """
-    Preenche valores ausentes (NaN) em uma série temporal univariada 
-    usando K-Nearest Neighbors (KNN) baseado no índice de tempo.
+    Preenche valores ausentes (NaN) em uma série temporal univariada usando 
+    K-Nearest Neighbors (KNN) baseado no tempo e sazonalidade.
+    Recebe os timestamps para extrair a hora e o minuto e os 
+    transforma em variáveis cíclicas (seno/cosseno) para calcular vizinhos.
     """
     series_filled = df_series.copy()
     
@@ -65,11 +68,32 @@ def knn_fill_missing(df_series: pd.Series, k: int = 3, weights: str = 'distance'
     if not missing_mask.any():
         return series_filled
         
-    # X (features) será o índice (posição temporal), Y será o valor da série
-    X_train = np.where(~missing_mask)[0].reshape(-1, 1)
+    # 1. Feature de tempo absoluto (tendência) normalizada de 0 a 1
+    seq_index = np.arange(len(series_filled)).reshape(-1, 1).astype(float)
+    idx_min, idx_max = seq_index.min(), seq_index.max()
+    if idx_max > idx_min:
+        seq_index = (seq_index - idx_min) / (idx_max - idx_min)
+        
+    features = seq_index
+    
+    # 2. Features cíclicas para horas e minutos usando os timestamps fornecidos
+    dt_index = pd.DatetimeIndex(timestamps)
+    hours = dt_index.hour.values.reshape(-1, 1)
+    minutes = dt_index.minute.values.reshape(-1, 1)
+    
+    hour_sin = np.sin(2 * np.pi * hours / 24)
+    hour_cos = np.cos(2 * np.pi * hours / 24)
+    minute_sin = np.sin(2 * np.pi * minutes / 60)
+    minute_cos = np.cos(2 * np.pi * minutes / 60)
+    
+    # Concatena o tempo absoluto e as features sazonais
+    features = np.hstack([features, hour_sin, hour_cos, minute_sin, minute_cos])
+        
+    # X (features) e Y (target)
+    X_train = features[~missing_mask]
     y_train = series_filled[~missing_mask].values
     
-    X_test = np.where(missing_mask)[0].reshape(-1, 1)
+    X_test = features[missing_mask]
     
     # Ajusta o K caso o número de não-nulos seja menor que K
     n_neighbors = min(k, len(X_train))
@@ -160,9 +184,11 @@ def svd_fill_missing(df_series: pd.Series, window_size: int = 24, n_components: 
         return series_filled.fillna(series_filled.mean())
         
     # Chute inicial: preenche temporariamente com a média
-    vals = series_filled.fillna(series_filled.mean()).values
-    
+    vals = series_filled.fillna(series_filled.mean()).values.copy()
+    c = 1
     for _ in range(max_iter):
+        print(f"iteração SVD:{c}")
+        c = c + 1
         # 1. Constrói a Matriz de Trajetória (Hankel Matrix)
         X = np.column_stack([vals[i:i+L] for i in range(K)])
         
@@ -187,6 +213,7 @@ def svd_fill_missing(df_series: pd.Series, window_size: int = 24, n_components: 
         
         # 5. Atualiza APENAS os valores nulos originais com a reconstrução
         vals[missing_mask] = vals_rec[missing_mask]
+        print("-")
         
     series_filled.iloc[:] = vals
     return series_filled
