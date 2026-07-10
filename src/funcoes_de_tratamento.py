@@ -31,106 +31,6 @@ def read_data(folder: str, features: list[str] = ["id_time", "n_bytes"]   ) -> l
     return pd.concat(lista_dia, ignore_index=True)
 
 
-def complete_id_2(df):
-    df = df.copy()
-    
-    # 1. Cria um MultiIndex com TODAS as combinações teóricas possíveis 
-    # (24 horas * 60 minutos = 1440 linhas por ID)
-    ids_unicos = df['ID'].unique()
-    horas = range(24)
-    minutos = range(6)
-    
-    # Gera a malha cartesiana (ID x Hora x Minuto)
-    multi_idx = pd.MultiIndex.from_product(
-        [ids_unicos, horas, minutos], 
-        names=['ID', 'hour_id', 'min_id']
-    )
-    
-    # 2. Configura a base atual para usar essas três colunas como índice e remove duplicatas
-    # O drop_duplicates evita o erro fatal se a sua base original tiver duas marcações exatas no mesmo minuto
-    df = df.drop_duplicates(subset=['ID', 'hour_id', 'min_id'])
-    df = df.set_index(['ID', 'hour_id', 'min_id'])
-    
-    # 3. O REINDEX MÁGICO: Ele vai criar as linhas em branco para as horas/minutos que não existem
-    df_full = df.reindex(multi_idx).reset_index()
-    
-    # 4. Preenchimento (Fill)
-    # Primeiro agrupa pelo ID para garantir que o bfill/ffill de uma instituição/dia não vaze para outra
-    def preencher_gaps(g):
-        # Garante a ordem cronológica
-        g = g.sort_values(['hour_id', 'min_id'])
-        
-        # Preenche a id_institution 
-
-        g['id_institution'] = g['id_institution'].bfill().ffill() 
-        g['n_bytes_day'] = g['n_bytes_day'].bfill().ffill()     
-        # Preenche as colunas de bytes (ajuste os nomes conforme sua base)
-        g['n_bytes_hour'] = g['n_bytes_hour'].fillna(g['n_bytes_day']/24)
-        g['n_bytes_10minutes'] = g['n_bytes_10minutes'].fillna(g['n_bytes_hour']/6)
-            
-        # Preenche o resto (exceto as chaves de índice)
-        for col in g.columns:
-            if col not in ['ID', 'hour_id', 'min_id', 'id_institution', 'n_bytes_hour', 'n_bytes_10minutes']:
-                g[col] = g[col].ffill().bfill()
-                
-        return g
-
-    # Aplica o preenchimento por grupo (por ID)
-    df_out = df_full.groupby('ID', group_keys=False).apply(preencher_gaps)
-    
-    return df_out.reset_index(drop=True)
-
-def complete_id(df):
-    df = df.copy()
-    
-    # 1. Cria um MultiIndex com TODAS as combinações teóricas possíveis 
-    # (24 horas * 60 minutos = 1440 linhas por ID)
-    ids_unicos = df['ID'].unique()
-    horas = range(24)
-    minutos = range(6)
-    
-    # Gera a malha cartesiana (ID x Hora x Minuto)
-    multi_idx = pd.MultiIndex.from_product(
-        [ids_unicos, horas, minutos], 
-        names=['ID', 'hour_id', 'min_id']
-    )
-    
-    # 2. Configura a base atual para usar essas três colunas como índice e remove duplicatas
-    # O drop_duplicates evita o erro fatal se a sua base original tiver duas marcações exatas no mesmo minuto
-    df = df.drop_duplicates(subset=['ID', 'hour_id', 'min_id'])
-    df = df.set_index(['ID', 'hour_id', 'min_id'])
-    
-    # 3. O REINDEX MÁGICO: Ele vai criar as linhas em branco para as horas/minutos que não existem
-    df_full = df.reindex(multi_idx).reset_index()
-    
-    # 4. Preenchimento (Fill)
-    # Primeiro agrupa pelo ID para garantir que o bfill/ffill de uma instituição/dia não vaze para outra
-    def preencher_gaps(g):
-        # Garante a ordem cronológica
-        g = g.sort_values(['hour_id', 'min_id'])
-        
-        # Preenche a id_institution 
-        if 'id_institution' in g.columns:
-            g['id_institution'] = g['id_institution'].ffill().bfill()
-            
-        # Preenche as colunas de bytes (ajuste os nomes conforme sua base)
-        if 'n_bytes_hour' in g.columns:
-            g['n_bytes_hour'] = g['n_bytes_hour'].ffill().bfill()
-        if 'n_bytes_10minutes' in g.columns:
-            g['n_bytes_10minutes'] = g['n_bytes_10minutes'].ffill().bfill()
-            
-        # Preenche o resto (exceto as chaves de índice)
-        for col in g.columns:
-            if col not in ['ID', 'hour_id', 'min_id', 'id_institution', 'n_bytes_hour', 'n_bytes_10minutes']:
-                g[col] = g[col].ffill().bfill()
-                
-        return g
-
-    # Aplica o preenchimento por grupo (por ID)
-    df_out = df_full.groupby('ID', group_keys=False).apply(preencher_gaps)
-    
-    return df_out.reset_index(drop=True)
-
 def treino_val_teste(df = pd.Series, t_treino = 0, t_teste = 0, t_val = 0):
     return  df[:int(t_treino*len(df))], df[int(t_treino*len(df)):int((t_treino + t_val)*len(df))]  , df[int((t_treino + t_val)*len(df)):]
 
@@ -152,6 +52,52 @@ def scaling(df_series: pd.Series, mode = 0, scaler = None) -> pd.Series:
         dados_scaled = dados_tensor * scale + min_offset
         return pd.Series(dados_scaled.detach().cpu().numpy().flatten(), index=df_series.index, name=df_series.name)
     raise ValueError("mode must be 0 (fit/transform) or 1 (transform)")
+
+
+
+def granufill(df_greater:pd.DataFrame,df_less:pd.DataFrame, merging_features: list, target_feature: str, gran_diff: int ) -> pd.DataFrame:
+    try:
+        df_merged = df_less.merge(df_greater, on=merging_features, how="left", suffixes=(None,"_greater") )
+        df_merged[target_feature] = df_merged[target_feature].fillna(df_merged[f"{target_feature}_greater"] / gran_diff)
+        return df_merged[df_less.columns]   
+    except Exception as e:
+        print(f"Erro ao preencher granularidade: {e}")
+        return df_less 
+
+
+def knn_fill_missing(df_series: pd.Series, k: int = 3, weights: str = 'distance') -> pd.Series:
+    """
+    Preenche valores ausentes (NaN) em uma série temporal univariada 
+    usando K-Nearest Neighbors (KNN) baseado no índice de tempo.
+    """
+    series_filled = df_series.copy()
+    
+    missing_mask = series_filled.isna()
+    
+    if not missing_mask.any():
+        return series_filled
+        
+    # X (features) será o índice (posição temporal), Y será o valor da série
+    X_train = np.where(~missing_mask)[0].reshape(-1, 1)
+    y_train = series_filled[~missing_mask].values
+    
+    X_test = np.where(missing_mask)[0].reshape(-1, 1)
+    
+    # Ajusta o K caso o número de não-nulos seja menor que K
+    n_neighbors = min(k, len(X_train))
+    if n_neighbors == 0:
+        return series_filled # Não há o que preencher se tudo for NaN
+    
+    # Treina o modelo KNN
+    knn = KNeighborsRegressor(n_neighbors=n_neighbors, weights=weights)
+    knn.fit(X_train, y_train)
+    
+    # Prediz os valores faltantes
+    predicted_values = knn.predict(X_test)
+    series_filled.iloc[np.where(missing_mask)[0]] = predicted_values
+        
+    return series_filled
+
 
 def sliding_window (df_series: pd.Series, inputs: int, outputs: int, step: int = 1) -> pd.DataFrame:
 
@@ -180,3 +126,105 @@ def sliding_window (df_series: pd.Series, inputs: int, outputs: int, step: int =
         columns=x_cols + y_cols,
     )
     return df_windowed
+
+
+def moving_average_fill(df_series: pd.Series, window_size: int = 3, center: bool = False) -> pd.Series:
+    """
+    Preenche valores ausentes (NaN) em uma série temporal univariada 
+    usando média móvel (rolling mean) do pandas.
+    """
+    series_filled = df_series.copy()
+    
+    if not series_filled.isna().any():
+        return series_filled
+        
+    # Calcula a média móvel usando pandas
+    moving_avg = series_filled.rolling(window=window_size, min_periods=1, center=center).mean()
+    
+    # Preenche os valores nulos com a média móvel
+    series_filled = series_filled.fillna(moving_avg)
+    
+    # Preenche possíveis valores nulos restantes nas bordas (ex: se min_periods não resolver tudo)
+    if series_filled.isna().any():
+        series_filled = series_filled.bfill().ffill()
+        
+    return series_filled
+
+
+def svd_fill_missing(df_series: pd.Series, window_size: int = 24, n_components: int = 2, max_iter: int = 5) -> pd.Series:
+    """
+    Preenche valores ausentes em uma série temporal univariada usando 
+    Singular Spectrum Analysis (SSA) baseado em SVD.
+    
+    Como o scikit-learn e o pandas não possuem um SVD nativo que suporte 
+    diretamente séries 1D com nulos, esta é uma implementação iterativa leve 
+    usando o numpy.linalg.svd.
+    """
+    series_filled = df_series.copy()
+    missing_mask = series_filled.isna()
+    
+    if not missing_mask.any():
+        return series_filled
+        
+    N = len(series_filled)
+    L = window_size
+    K = N - L + 1
+    
+    # Se a janela for maior que a série, recai para preenchimento simples
+    if K <= 0 or L <= 0:
+        return series_filled.fillna(series_filled.mean())
+        
+    # Chute inicial: preenche temporariamente com a média
+    vals = series_filled.fillna(series_filled.mean()).values
+    
+    for _ in range(max_iter):
+        # 1. Constrói a Matriz de Trajetória (Hankel Matrix)
+        X = np.column_stack([vals[i:i+L] for i in range(K)])
+        
+        # 2. Aplica o SVD
+        try:
+            U, s, Vt = np.linalg.svd(X, full_matrices=False)
+        except np.linalg.LinAlgError:
+            break # Se o SVD não convergir, interrompe o loop
+            
+        # 3. Trunca mantendo os componentes principais
+        k_comp = min(n_components, len(s))
+        X_rec = U[:, :k_comp] @ np.diag(s[:k_comp]) @ Vt[:k_comp, :]
+        
+        # 4. Reconstrói a série 1D (Média das diagonais invertidas)
+        vals_rec = np.zeros(N)
+        counts = np.zeros(N)
+        for i in range(L):
+            for j in range(K):
+                vals_rec[i+j] += X_rec[i, j]
+                counts[i+j] += 1
+        vals_rec /= counts
+        
+        # 5. Atualiza APENAS os valores nulos originais com a reconstrução
+        vals[missing_mask] = vals_rec[missing_mask]
+        
+    series_filled.iloc[:] = vals
+    return series_filled
+
+
+def moving_median_fill(df_series: pd.Series, window_size: int = 3, center: bool = False) -> pd.Series:
+    """
+    Preenche valores ausentes (NaN) em uma série temporal univariada 
+    usando mediana móvel (rolling median) do pandas.
+    """
+    series_filled = df_series.copy()
+    
+    if not series_filled.isna().any():
+        return series_filled
+        
+    # Calcula a mediana móvel usando pandas
+    moving_median = series_filled.rolling(window=window_size, min_periods=1, center=center).median()
+    
+    # Preenche os valores nulos com a mediana móvel
+    series_filled = series_filled.fillna(moving_median)
+    
+    # Preenche possíveis valores nulos restantes nas bordas (ex: se min_periods não resolver tudo)
+    if series_filled.isna().any():
+        series_filled = series_filled.bfill().ffill()
+        
+    return series_filled

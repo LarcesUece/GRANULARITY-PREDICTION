@@ -1,8 +1,5 @@
 GRU
-Carregando modelos...
-[1m480/480[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 577us/step
-[1m11436/11436[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m8s[0m 654us/step
-[1m13724/13724[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m15s[0m 1ms/step
+
 Desempenho do modelo para granularidade diária:
 --- Desempenho: ---
 RMSE (Erro Médio): 0.1624
@@ -25,10 +22,7 @@ SMAPE: 51.4524
 NRMSE: 0.0409
 ------------------------------
 LSTM
-Carregando modelos...
-[1m480/480[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 615us/step
-[1m11436/11436[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m7s[0m 616us/step
-[1m13724/13724[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m10s[0m 706us/step
+
 Desempenho do modelo para granularidade diária:
 --- Desempenho: ---
 RMSE (Erro Médio): 0.1574
@@ -51,10 +45,7 @@ SMAPE: 51.4472
 NRMSE: 0.0415
 ------------------------------
 RNN
-Carregando modelos...
-[1m480/480[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m0s[0m 498us/step
-[1m11436/11436[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m5s[0m 413us/step
-[1m13724/13724[0m [32m━━━━━━━━━━━━━━━━━━━━[0m[37m[0m [1m6s[0m 448us/step
+
 Desempenho do modelo para granularidade diária:
 --- Desempenho: ---
 RMSE (Erro Médio): 0.1749
