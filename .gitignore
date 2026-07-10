@@ -4,3 +4,4 @@ MODELOS/
 .venv
 __pycache__/
 *.py[cod]
+RESULTADOS/*

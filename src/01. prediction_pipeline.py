@@ -20,6 +20,8 @@ from typing import Callable, Iterable
 
 import numpy as np
 import pandas as pd
+import joblib
+from sklearn.preprocessing import StandardScaler
 
 
 ROOT = Path(__file__).resolve().parent
@@ -51,8 +53,18 @@ class CudaConfigurationError(RuntimeError):
     """Raised when CUDA is required but PyTorch cannot use it."""
 
 
-MODEL_NAMES = ("MLP", "RNN", "LSTM", "GRU")
+MODEL_NAMES = ("GRU",)#("MLP", "RNN", "LSTM", "GRU")
 BATCH_SIZES = (128, 256)
+'''
+WINDOWS = {
+    "7-1": {"10min": (7 * 24 * 6, 1 * 24 * 6)},
+    "7-2": {"10min": (7 * 24 * 6, 2 * 24 * 6)},
+    "14-1": {"10min": (14 * 24 * 6, 1 * 24 * 6)},
+    "14-3": {"10min": (14 * 24 * 6, 3 * 24 * 6)},
+    "30-7": {"10min": (30 * 24 * 6, 7 * 24 * 6)},
+}
+'''
+
 WINDOWS = {
     "7-1": {"day": (7, 1), "hour": (7 * 24, 1 * 24), "10min": (7 * 24 * 6, 1 * 24 * 6)},
     "7-2": {"day": (7, 2), "hour": (7 * 24, 2 * 24), "10min": (7 * 24 * 6, 2 * 24 * 6)},
@@ -344,8 +356,8 @@ def discover_parquet_files(data_dir: Path, method: str, window_name: str) -> lis
     all_files = sorted(data_dir.rglob("*.parquet"))
     if not all_files:
         raise FileNotFoundError(f"No parquet files found under {data_dir}")
-
-    by_granularity: dict[str, list[Path]] = {"day": [], "hour": [], "10min": []}
+    by_granularity: dict[str, list[Path]] = {window: [] for window in WINDOWS[window_name]}
+    #by_granularity: dict[str, list[Path]] = {"day": [], "hour": [], "10min": []}
     for path in all_files:
         stem = path.stem.lower()
         if "10min" in stem or "10_min" in stem:
@@ -515,16 +527,29 @@ def build_windowed_dataset(
     y_test_parts: list[np.ndarray] = []
     institutions_used = 0
     min_len = min_window_multiplier * (spec.lookback + spec.horizon)
+    scalers_dict = {}
 
-    for _, group in df.groupby("id_institution", sort=False):
+    for inst_id, group in df.groupby("id_institution", sort=False):
         values = group["n_bytes"].to_numpy(dtype=np.float32, copy=True)
         if values.size <= min_len:
             continue
         institutions_used += 1
         train, val, test = chronological_split(values, train_ratio, val_ratio)
+        
+        scaler = StandardScaler()
+        train = scaler.fit_transform(train.reshape(-1, 1)).flatten()
+        val = scaler.transform(val.reshape(-1, 1)).flatten()
+        test = scaler.transform(test.reshape(-1, 1)).flatten()
+        
+        scalers_dict[inst_id] = scaler
+        
         append_windows(X_train_parts, y_train_parts, train, spec.lookback, spec.horizon, spec.train_step)
         append_windows(X_val_parts, y_val_parts, val, spec.lookback, spec.horizon, spec.val_step)
         append_windows(X_test_parts, y_test_parts, test, spec.lookback, spec.horizon, spec.test_step)
+
+    scalers_dir = ROOT / "scalers"
+    scalers_dir.mkdir(parents=True, exist_ok=True)
+    joblib.dump(scalers_dict, scalers_dir / f"scalers_{spec.name}.joblib")
 
     if not X_train_parts or not X_val_parts or not X_test_parts:
         raise ValueError(
@@ -886,7 +911,7 @@ def run_training(args: argparse.Namespace) -> None:
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-dir", type=Path, default=ROOT / "tratados", help="Directory containing treated parquet files.")
+    parser.add_argument("--data-dir", type=Path, default=ROOT / "data"/"tratados", help="Directory containing treated parquet files.")
     parser.add_argument(
         "--method",
         choices=("auto", "new_method", "original", "all"),
