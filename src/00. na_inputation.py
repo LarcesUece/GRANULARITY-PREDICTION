@@ -149,6 +149,13 @@ class timeInputer:
         df_lesser = df_lesser.copy()
         return granufill(df_greater, df_lesser, merging_features = ["time", "id_institution"], target_feature = "n_bytes", gran_diff = gran_diff)
 
+
+    def _inputeWithCubic(self, df_: pd.DataFrame) -> pd.DataFrame:
+        df = df_.copy()
+        for id in self.inst:
+            filtro = df["id_institution"] == id
+            df.loc[filtro, "n_bytes"] = cubic_fill_missing(df.loc[filtro, "n_bytes"])
+        return df
     def countTimeFilling(self, method, granularity, func,*args, **kwargs):
 
         if method not in self.elapsed_time.keys():
@@ -159,18 +166,23 @@ class timeInputer:
         end = perf_counter()
         self.elapsed_time[method][granularity] = end - start
         
-        df_.to_parquet(f"../data/tratados/{method}/df_{granularity}_.parquet", index = False)
+        df_.to_parquet(f"../data/tratados/{method}/df_{granularity}.parquet", index = False)
 
 
     def runFilling(self):
         self.countTimeFilling("granufill", "hour", self._inputeWithGranularity, self.df_day, self.df_hour, 24)
         self.countTimeFilling("granufill", "10min", self._inputeWithGranularity, self.df_hour, self.df_10min, 24*6)
+        self.countTimeFilling("moving_average", "hour", self._inputeWithMovingAverage, self.df_hour, 24)
+        self.countTimeFilling("moving_average", "10min", self._inputeWithMovingAverage, self.df_10min, 24*6)    
         self.countTimeFilling("moving_median", "hour", self._inputeWithMovingMedian, self.df_hour, 24)
         self.countTimeFilling("moving_median", "10min", self._inputeWithMovingMedian, self.df_10min, 24*6)
         self.countTimeFilling("knn", "hour", self._inputeWithKNN, self.df_hour, 24)
         self.countTimeFilling("knn", "10min", self._inputeWithKNN, self.df_10min, 144)
-        self.countTimeFilling("svd", "hour", self._inputeWithSVD, self.df_hour, 24)
-        self.countTimeFilling("svd", "10min", self._inputeWithSVD, self.df_10min, 144)
+        self.countTimeFilling("cubic", "hour", self._inputeWithCubic, self.df_hour)
+        self.countTimeFilling("cubic", "10min", self._inputeWithCubic, self.df_10min)
+        
+        #self.countTimeFilling("svd", "hour", self._inputeWithSVD, self.df_hour, 24)
+        #self.countTimeFilling("svd", "10min", self._inputeWithSVD, self.df_10min, 144)
 
         with open("../data/tratados/elapsed_time.json", "w") as f:
             json.dump(self.elapsed_time, f, indent=4)

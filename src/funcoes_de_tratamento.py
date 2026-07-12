@@ -131,6 +131,20 @@ def sliding_window (df_series: pd.Series, inputs: int, outputs: int, step: int =
     return df_windowed
 
 
+def cubic_fill_missing(df_series: pd.Series) -> pd.Series:
+    """
+    Preenche valores ausentes (NaN) em uma série temporal univariada 
+    usando interpolação cúbica.
+    """
+    series_filled = df_series.copy()
+    
+    if not series_filled.isna().any():
+        return series_filled
+        
+    series_filled = series_filled.interpolate(method='cubic')
+        
+    return series_filled
+
 def moving_average_fill(df_series: pd.Series, window_size: int = 3, center: bool = False) -> pd.Series:
     """
     Preenche valores ausentes (NaN) em uma série temporal univariada 
