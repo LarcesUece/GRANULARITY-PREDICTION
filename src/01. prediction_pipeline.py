@@ -24,12 +24,13 @@ import joblib
 from sklearn.preprocessing import StandardScaler
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 NOTEBOOKS_DIR = ROOT / "src" / "notebooks"
 if str(NOTEBOOKS_DIR) not in sys.path:
     sys.path.insert(0, str(NOTEBOOKS_DIR))
 
 os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 torch = None
 nn = None
@@ -53,7 +54,7 @@ class CudaConfigurationError(RuntimeError):
     """Raised when CUDA is required but PyTorch cannot use it."""
 
 
-MODEL_NAMES = ("GRU",)#("MLP", "RNN", "LSTM", "GRU")
+MODEL_NAMES = ("MLP", "RNN", "LSTM", "GRU")
 BATCH_SIZES = (128, 256)
 '''
 WINDOWS = {
@@ -942,7 +943,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--amp", action="store_true", help="Enable CUDA automatic mixed precision. Disabled by default because raw n_bytes can overflow float16.")
     parser.add_argument("--no-amp", dest="amp", action="store_false", help=argparse.SUPPRESS)
     parser.add_argument("--compile", action="store_true", help="Try torch.compile for model execution.")
-    parser.set_defaults(amp=False)
+    parser.set_defaults(amp=True)
     args = parser.parse_args(argv)
     if args.require_gpu:
         args.allow_cpu = False

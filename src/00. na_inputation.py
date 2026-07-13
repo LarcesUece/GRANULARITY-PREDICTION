@@ -166,7 +166,7 @@ class timeInputer:
         end = perf_counter()
         self.elapsed_time[method][granularity] = end - start
         
-        df_.to_parquet(f"../data/tratados/{method}/df_{granularity}.parquet", index = False)
+        df_.to_parquet(f"../data/tratados_stored/{method}/df_{granularity}.parquet", index = False)
 
 
     def runFilling(self):
@@ -186,7 +186,7 @@ class timeInputer:
 
         with open("../data/tratados/elapsed_time.json", "w") as f:
             json.dump(self.elapsed_time, f, indent=4)
-        print("tempo de execução salvo em ../data/tratados/elapsed_time.json")
+        print("tempo de execução salvo em ../data/tratados_stored/elapsed_time.json")
 
     
     def runAll(self):
