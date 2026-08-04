@@ -16,17 +16,20 @@ def get_device():
 def read_data(folder: str, features: list[str] = ["id_time", "n_bytes"]   ) -> list[pd.DataFrame]:
     print(f"1. Python is running from: {getcwd()}")
     print(f"2. Is the target path valid? {path.exists(folder)}")
+    if not path.exists(folder):
+        return False
     csv_files = glob(path.join(folder, "*.csv"))
 
     lista_dia = []
     for file in csv_files:
         filename = str(path.splitext(path.basename(file))[0])
         df = pd.read_csv(file)
-        for f in features:
-            if f not in df.columns:
-                print(f"Feature '{f}' not found in file '{filename}'. Adding it with NaN values.")
-                df[f] = np.nan
-        df = df[features].sort_values(by=features[0])
+        if features is not None:
+            for f in features:
+                if f not in df.columns:
+                    print(f"Feature '{f}' not found in file '{filename}'. Adding it with NaN values.")
+                    df[f] = np.nan
+            df = df[features].sort_values(by=features[0])
         df["id_institution"] = filename
         lista_dia.append(df)
 
@@ -136,7 +139,7 @@ def cubic_fill_missing(df_series: pd.Series) -> pd.Series:
     Preenche valores ausentes (NaN) em uma série temporal univariada 
     usando interpolação cúbica.
     """
-    series_filled = df_series.copy()
+    series_filled = pd.to_numeric(df_series.copy(), errors='coerce')
     
     if not series_filled.isna().any():
         return series_filled
@@ -144,6 +147,38 @@ def cubic_fill_missing(df_series: pd.Series) -> pd.Series:
     series_filled = series_filled.interpolate(method='cubic')
         
     return series_filled
+
+
+def linear_fill_missing(df_series: pd.Series) -> pd.Series:
+    """
+    Preenche valores ausentes (NaN) em uma série temporal univariada 
+    usando interpolação linear.
+    """
+    series_filled = pd.to_numeric(df_series.copy(), errors='coerce')
+    
+    if not series_filled.isna().any():
+        return series_filled
+        
+    series_filled = series_filled.interpolate(method='linear')
+        
+    return series_filled
+
+
+def quadratic_fill_missing(df_series: pd.Series) -> pd.Series:
+    """
+    Preenche valores ausentes (NaN) em uma série temporal univariada 
+    usando interpolação quadrática.
+    """
+    series_filled = pd.to_numeric(df_series.copy(), errors='coerce')
+    
+    if not series_filled.isna().any():
+        return series_filled
+        
+    series_filled = series_filled.interpolate(method='quadratic')
+        
+    return series_filled
+
+
 
 def moving_average_fill(df_series: pd.Series, window_size: int = 3, center: bool = False) -> pd.Series:
     """

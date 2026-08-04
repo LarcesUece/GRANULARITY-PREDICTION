@@ -54,17 +54,9 @@ class CudaConfigurationError(RuntimeError):
     """Raised when CUDA is required but PyTorch cannot use it."""
 
 
-MODEL_NAMES = ("MLP", "RNN", "LSTM", "GRU")
-BATCH_SIZES = (128, 256)
-'''
-WINDOWS = {
-    "7-1": {"10min": (7 * 24 * 6, 1 * 24 * 6)},
-    "7-2": {"10min": (7 * 24 * 6, 2 * 24 * 6)},
-    "14-1": {"10min": (14 * 24 * 6, 1 * 24 * 6)},
-    "14-3": {"10min": (14 * 24 * 6, 3 * 24 * 6)},
-    "30-7": {"10min": (30 * 24 * 6, 7 * 24 * 6)},
-}
-'''
+MODEL_NAMES = ("LSTM", "GRU")
+BATCH_SIZES = (256,)
+
 
 WINDOWS = {
     "7-1": {"day": (7, 1), "hour": (7 * 24, 1 * 24), "10min": (7 * 24 * 6, 1 * 24 * 6)},

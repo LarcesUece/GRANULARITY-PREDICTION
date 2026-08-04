@@ -8,24 +8,25 @@ import joblib
 from funcoes_de_tratamento import *
 from time import perf_counter
 import json
-
-df_day = read_data('../../data/institutions/agg_1_day')
-df_hour = read_data('../../data/institutions/agg_1_hour')
-df_10min = read_data('../../data/institutions/agg_10_minutes')
+from pathlib import Path
+ROOT = Path(__file__).resolve().parent.parent
+DATA_PATH = ROOT / "data"
+INSTITUTIONS_PATH = DATA_PATH / "institutions"
+TIMES_PATH = DATA_PATH / "times"
 
 class timeInputer:
     def __init__(self):
-        self.df_day = read_data('../../data/institutions/agg_1_day')
-        self.df_hour = read_data('../../data/institutions/agg_1_hour')
-        self.df_10min = read_data('../../data/institutions/agg_10_minutes')
+        self.df_day = read_data(INSTITUTIONS_PATH / "agg_1_day")
+        self.df_hour = read_data(INSTITUTIONS_PATH / "agg_1_hour")
+        self.df_10min = read_data(INSTITUTIONS_PATH / "agg_10_minutes")
         self.inst = None
         self.elapsed_time = {}
     
     def filter_inst(self):
         inst = []
 
-        for i in df_day["id_institution"].unique():
-            instituicao = df_day[df_day["id_institution"]==i]
+        for i in self.df_day["id_institution"].unique():
+            instituicao = self.df_day[self.df_day["id_institution"]==i]
             serve = True
             Q1 = instituicao["n_bytes"].quantile(0.20)
             Q3 = instituicao["n_bytes"].quantile(0.80)
@@ -48,7 +49,6 @@ class timeInputer:
             #verifica se ha instituições com outliers (valores muito altos) e elimina elas se for o caso
             elif instituicao[(instituicao["n_bytes"] > L_superior) | (instituicao["n_bytes"] < L_inferior)].shape[0]>0:
                 serve = False
-                out += 1
 
 
             if serve:
@@ -65,7 +65,7 @@ class timeInputer:
         df = df.copy()
         df["id_time"] = df["id_time"].astype(int) 
         df = df.merge(time, on="id_time", how="left")
-        df["time"] = pd.to_datetime(df["time"])
+        df["time"] = pd.to_datetime(df["time"], utc=True)
 
         df["time"] = pd.to_datetime(pd.DataFrame(
                 {
@@ -84,9 +84,9 @@ class timeInputer:
         return df
 
     def insertTimeRange(self):
-        self.df_day = self._merge_id_date(self.df_day, pd.read_csv('../data/times/times_1_day.csv'))
-        self.df_hour = self._merge_id_date(self.df_hour, pd.read_csv('../data/times/times_1_hour.csv'))
-        self.df_10min = self._merge_id_date(self.df_10min, pd.read_csv('../data/times/times_1_10min.csv'))
+        self.df_day = self._merge_id_date(self.df_day, pd.read_csv(TIMES_PATH / 'times_1_day.csv'))
+        self.df_hour = self._merge_id_date(self.df_hour, pd.read_csv(TIMES_PATH / 'times_1_hour.csv'))
+        self.df_10min = self._merge_id_date(self.df_10min, pd.read_csv(TIMES_PATH / 'times_10_minutes.csv'))
 
         series_day = pd.Series( pd.date_range(start = self.df_day["time"].min(), end = self.df_day["time"].max(), freq = "D"), name = "time")
         series_hour = pd.Series(pd.date_range(start=self.df_hour["time"].min(), end=self.df_hour["time"].max(), freq='h'), name="time")
@@ -156,6 +156,22 @@ class timeInputer:
             filtro = df["id_institution"] == id
             df.loc[filtro, "n_bytes"] = cubic_fill_missing(df.loc[filtro, "n_bytes"])
         return df
+
+    def _inputeWithLinear(self, df_: pd.DataFrame) -> pd.DataFrame:
+        df = df_.copy()
+        for id in self.inst:
+            filtro = df["id_institution"] == id
+            df.loc[filtro, "n_bytes"] = linear_fill_missing(df.loc[filtro, "n_bytes"])
+        return df
+
+    def _inputeWithQuadratic(self, df_: pd.DataFrame) -> pd.DataFrame:
+        df = df_.copy()
+        for id in self.inst:
+            filtro = df["id_institution"] == id
+            df.loc[filtro, "n_bytes"] = quadratic_fill_missing(df.loc[filtro, "n_bytes"])
+        return df
+
+    
     def countTimeFilling(self, method, granularity, func,*args, **kwargs):
 
         if method not in self.elapsed_time.keys():
@@ -165,8 +181,11 @@ class timeInputer:
         df_ = func(*args, **kwargs)
         end = perf_counter()
         self.elapsed_time[method][granularity] = end - start
+
+        if not (DATA_PATH / "tratados_stored" / method).exists():
+            (DATA_PATH / "tratados_stored" / method).mkdir(parents=True, exist_ok=True)
         
-        df_.to_parquet(f"../data/tratados_stored/{method}/df_{granularity}.parquet", index = False)
+        df_.to_parquet(DATA_PATH / "tratados_stored" / method / f"df_{granularity}.parquet", index = False)
 
 
     def runFilling(self):
@@ -180,13 +199,17 @@ class timeInputer:
         self.countTimeFilling("knn", "10min", self._inputeWithKNN, self.df_10min, 144)
         self.countTimeFilling("cubic", "hour", self._inputeWithCubic, self.df_hour)
         self.countTimeFilling("cubic", "10min", self._inputeWithCubic, self.df_10min)
+        self.countTimeFilling("linear", "hour", self._inputeWithLinear, self.df_hour)
+        self.countTimeFilling("linear", "10min", self._inputeWithLinear, self.df_10min)
+        self.countTimeFilling("quadratic", "hour", self._inputeWithQuadratic, self.df_hour)
+        self.countTimeFilling("quadratic", "10min", self._inputeWithQuadratic, self.df_10min)
         
         #self.countTimeFilling("svd", "hour", self._inputeWithSVD, self.df_hour, 24)
         #self.countTimeFilling("svd", "10min", self._inputeWithSVD, self.df_10min, 144)
 
-        with open("../data/tratados/elapsed_time.json", "w") as f:
+        with open(DATA_PATH / "tratados_stored" / "elapsed_time.json", "w") as f:
             json.dump(self.elapsed_time, f, indent=4)
-        print("tempo de execução salvo em ../data/tratados_stored/elapsed_time.json")
+        print("tempo de execução salvo em " + str(DATA_PATH / "tratados_stored" / "elapsed_time.json"))
 
     
     def runAll(self):
