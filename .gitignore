@@ -5,4 +5,4 @@ MODELOS/
 __pycache__/
 *.py[cod]
 RESULTADOS/*
-
+graficos_stored/*

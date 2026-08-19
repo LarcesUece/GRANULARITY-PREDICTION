@@ -31,7 +31,9 @@ if str(NOTEBOOKS_DIR) not in sys.path:
 
 os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-
+FUNCTIONS_PATH = ROOT /"src"/ "funcoes"
+import sys
+sys.path.append(str(FUNCTIONS_PATH))
 torch = None
 nn = None
 DataLoader = None
@@ -54,8 +56,8 @@ class CudaConfigurationError(RuntimeError):
     """Raised when CUDA is required but PyTorch cannot use it."""
 
 
-MODEL_NAMES = ("LSTM", "GRU")
-BATCH_SIZES = (256,)
+MODEL_NAMES = ("MLP", "RNN", "LSTM", "GRU")
+BATCH_SIZES = (256,128)
 
 
 WINDOWS = {
@@ -947,6 +949,38 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
 
 if __name__ == "__main__":
     try:
-        run_training(parse_args())
+        args = parse_args()
+        original_data_dir = args.data_dir
+        
+        # Encontra todos os arquivos parquet a partir do diretório raiz de dados
+        parquet_files = list(original_data_dir.rglob("*.parquet"))
+        
+        # Pega apenas os diretórios únicos (pastas folha) que contêm esses arquivos
+        target_dirs = sorted(set(f.parent for f in parquet_files))
+        
+        if target_dirs:
+            for target_dir in target_dirs:
+                # Ex: se target_dir é "data/tratados/0.05/knn", rel_path será "0.05/knn"
+                rel_path = target_dir.relative_to(original_data_dir)
+                
+                # Se for a própria pasta raiz, rel_path será '.'
+                if str(rel_path) == '.':
+                    output_subpath = "prediction_pipeline"
+                else:
+                    output_subpath = str(rel_path)
+                
+                print(f"\n{'='*60}\nIniciando pipeline para a pasta: {output_subpath}\n{'='*60}")
+                
+                args.data_dir = target_dir
+                args.output_dir = ROOT / "RESULTADOS" / output_subpath
+                
+                try:
+                    run_training(args)
+                except Exception as e:
+                    print(f"Erro ao processar a pasta {target_dir}: {e}")
+        else:
+            # Caso não encontre arquivos parquet
+            print(f"Nenhum arquivo .parquet encontrado em {original_data_dir}")
+            
     except (MissingDependencyError, CudaConfigurationError) as exc:
         raise SystemExit(str(exc)) from exc
