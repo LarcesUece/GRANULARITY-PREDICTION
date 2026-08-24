@@ -217,6 +217,10 @@ class timeInputer:
             df.loc[filtro, "n_bytes"] = quadratic_fill_missing(df.loc[filtro, "n_bytes"])
         return df
 
+    def _inputeWithKNNWithGranufill(self, df_greater: pd.DataFrame,df_lesser: pd.DataFrame,gran_diff: int ):
+        df_greater = df_greater.reset_index(drop=True)
+        df_lesser = df_lesser.reset_index(drop=True)
+        return knn_with_granufill(df_greater, df_lesser, merging_features = ["time", "id_institution"], target_feature = "n_bytes", gran_diff = gran_diff)
     
     def countTimeFilling(self, method, granularity, func,*args, **kwargs):
 
@@ -244,6 +248,11 @@ class timeInputer:
         df_hour = self._inputeWithGranularity(self.df_day, self.df_hour, 24)   
         self.countTimeFilling("granufill", "10min", self._inputeWithGranularity, df_hour, self.df_10min, 24*6)
         del df_hour
+
+        self.countTimeFilling("knn_with_granufill", "hour", self._inputeWithKNNWithGranufill, self.df_day, self.df_hour, 24)
+        df_hour = self._inputeWithGranularity(self.df_day, self.df_hour, 24)   
+        self.countTimeFilling("knn_with_granufill", "10min", self._inputeWithKNNWithGranufill, df_hour, self.df_10min, 24*6)
+        del df_hour
         self.countTimeFilling("moving_average", "hour", self._inputeWithMovingAverage, self.df_hour, 24)
         self.countTimeFilling("moving_average", "10min", self._inputeWithMovingAverage, self.df_10min, 24*6)    
         self.countTimeFilling("moving_median", "hour", self._inputeWithMovingMedian, self.df_hour, 24)
@@ -256,9 +265,6 @@ class timeInputer:
         self.countTimeFilling("linear", "10min", self._inputeWithLinear, self.df_10min)
         self.countTimeFilling("quadratic", "hour", self._inputeWithQuadratic, self.df_hour)
         self.countTimeFilling("quadratic", "10min", self._inputeWithQuadratic, self.df_10min)
-        
-        #self.countTimeFilling("svd", "hour", self._inputeWithSVD, self.df_hour, 24)
-        #self.countTimeFilling("svd", "10min", self._inputeWithSVD, self.df_10min, 144)
 
         with open(DATA_PATH / "tratados" / str(self.pct) / "elapsed_time.json", "w") as f:
             json.dump(self.elapsed_time, f, indent=4)

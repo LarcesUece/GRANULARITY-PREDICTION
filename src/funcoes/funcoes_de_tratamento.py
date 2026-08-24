@@ -131,6 +131,85 @@ def knn_fill_missing(df_series: pd.Series, k: int = 3, weights: str = 'distance'
         
     return series_filled
 
+from sklearn.neighbors import KNeighborsRegressor
+
+def knn_with_granufill(df_greater: pd.DataFrame, df_less: pd.DataFrame, merging_features: list, target_feature: str, gran_diff: int, k: int = 3, weights: str = 'distance') -> pd.DataFrame:
+    # 1. Extração rápida da série alvo (a que possui os nulos)
+    target_series = df_less[target_feature].to_numpy(dtype=np.float32)
+    missing_mask = np.isnan(target_series)
+    
+    # 2. Fuga antecipada (Short-circuit)
+    if not missing_mask.any():
+        return df_less.copy()
+        
+    n_samples = len(target_series)
+    n_valid = np.count_nonzero(~missing_mask)
+    n_neighbors = min(k, n_valid)
+    
+    if n_neighbors == 0:
+        return df_less.copy()
+
+    # 3. Alinhamento dimensional: Extraindo a feature auxiliar do df_greater
+    # Pegamos as chaves de merge e o tempo sem sujar o df original
+    cols_align = list(set(merging_features + ['time']))
+    df_align = df_less[cols_align].copy()
+    
+    if gran_diff == 24:
+        df_align['time'] = df_align['time'].dt.floor('d')
+    else:
+        df_align['time'] = df_align['time'].dt.floor('h')
+        
+    # Trazemos apenas a coluna alvo do df_greater para não duplicar dados no merge
+    cols_greater = list(set(merging_features + [target_feature]))
+    df_merged = df_align.merge(df_greater[cols_greater], on=merging_features, how='left')
+    
+    # Agora greater_series tem exatamente o mesmo número de linhas que o df_less
+    greater_series = df_merged[target_feature].to_numpy(dtype=np.float32)
+
+    # 4. Normalização do Tempo
+    time_scaled = np.linspace(0, 1, n_samples, dtype=np.float32)
+    
+    # 5. Normalização da Feature Auxiliar
+    if np.isnan(greater_series).all():
+        greater_scaled = np.zeros(n_samples, dtype=np.float32)
+    else:
+        greater_min = np.nanmin(greater_series)
+        greater_max = np.nanmax(greater_series)
+        
+        if greater_max > greater_min:
+            greater_scaled = (greater_series - greater_min) / (greater_max - greater_min)
+        else:
+            greater_scaled = np.zeros(n_samples, dtype=np.float32)
+            
+    # O KNN não aceita nulos no 'X'. Se o df_greater não tinha dados para alguma hora, injetamos zero.
+    greater_scaled = np.nan_to_num(greater_scaled, nan=0.0)
+        
+    # 6. Separação de Treino (não-nulos) e Teste (nulos) 
+    # X_train e X_test agora possuem o Tempo + a Feature do df_greater
+    X = np.column_stack((time_scaled, greater_scaled))
+    
+    X_train = X[~missing_mask]
+    y_train = target_series[~missing_mask]
+    
+    X_test = X[missing_mask]
+    
+    # 7. Treinamento e Predição com KNeighborsRegressor
+    knn = KNeighborsRegressor(n_neighbors=n_neighbors, weights=weights)
+    knn.fit(X_train, y_train)
+    
+    predicted_values = knn.predict(X_test)
+    
+    # 8. Cópia e atribuição direta no array NumPy
+    target_series[missing_mask] = predicted_values
+    
+    df_result = df_less.copy()
+    df_result[target_feature] = target_series
+    
+    return df_result
+
+
+
+
 
 def sliding_window (df_series: pd.Series, inputs: int, outputs: int, step: int = 1) -> pd.DataFrame:
 

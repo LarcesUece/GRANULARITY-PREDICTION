@@ -5,21 +5,24 @@ import pandas as pd
 from os import path
 from glob import glob
 
-metrics_path = "/home/ismael/Documentos/GRANULARITY-PREDICTION/RESULTADOS/metrics"
+metrics_path = "/home/ismael/Documentos/GRANULARITY-PREDICTION/RESULTADOS"
 graphs_dir = "/home/ismael/Documentos/GRANULARITY-PREDICTION/RESULTADOS/graficos"
-json_files = glob(path.join(metrics_path, "*.jsonl"))
+json_files = glob(path.join(metrics_path, "**", "metrics.jsonl"), recursive=True)
 
 if not json_files:
-    raise FileNotFoundError(f"No JSONL files found in {metrics_path}")
+    raise FileNotFoundError(f"No metrics.jsonl files found in {metrics_path}")
 
 print(f"Found {len(json_files)} JSONL files.")
 
 all_records = []
 
 for json_file in json_files:
-    filename = str(path.splitext(path.basename(json_file))[0])
-    # A primeira palavra antes do underline
-    imputation_method = filename.split('_')[0]
+    parent_dir = path.basename(path.dirname(json_file))
+    if parent_dir and not parent_dir.replace('.', '', 1).isdigit() and parent_dir != "RESULTADOS":
+        imputation_method = parent_dir
+    else:
+        filename = str(path.splitext(path.basename(json_file))[0])
+        imputation_method = filename.split('_')[0]
     
     df = pd.read_json(json_file, lines=True)
     
