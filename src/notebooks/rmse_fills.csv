@@ -1,0 +1,17 @@
+granularity,pct,method,RMSE
+df_10min,0.2,granufill,718792975.6961951
+df_10min,0.2,knn,260448608.33163196
+df_10min,0.2,knn_with_granufill,264206793.52747577
+df_10min,0.2,linear,271339756.717511
+df_10min,0.2,moving_average,366512943.83858424
+df_10min,0.2,moving_median,370241131.30273515
+df_10min,0.2,quadratic,335537571.5539392
+df_10min,0.2,cubic,346276948.8661578
+df_hour,0.2,granufill,1988553244.0661113
+df_hour,0.2,knn,1505185764.5293634
+df_hour,0.2,knn_with_granufill,1103153520.2455215
+df_hour,0.2,linear,953752918.2859184
+df_hour,0.2,moving_average,2126716859.2040398
+df_hour,0.2,moving_median,2179943486.843371
+df_hour,0.2,quadratic,1110834880.4634774
+df_hour,0.2,cubic,1143889146.8117468
