@@ -1,6 +1,6 @@
 from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
-DATA_PATH = ROOT / "dados"
+DATA_PATH = ROOT / "data"
 INSTITUTIONS_PATH = DATA_PATH / "institutions"
 TIMES_PATH = DATA_PATH / "times"
 TRATADOS_PATH = DATA_PATH / "tratados"
@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from funcoes_de_predicao.funcoes_de_tratamento import (
+    read_data,
     granufill,
     knn_fill_missing,
     svd_fill_missing,
@@ -38,11 +39,11 @@ import json
 from statsmodels.tsa.seasonal import STL
 from sklearn.neighbors import KNeighborsRegressor
 
-
+'''
 def read_data(path):
     """Read a treated parquet (time, id_institution, n_bytes) as a pandas DataFrame."""
     return pl.read_parquet(path).to_pandas()
-
+'''
 
 METRIC_GROUPS = {
     "statistical": ["mean", "std", "variance", "minimum", "maximum", "range",
@@ -144,9 +145,9 @@ def knn_with_granufill(df_greater: pd.DataFrame, df_less: pd.DataFrame, merging_
 
 class timeInputer:
     def __init__(self,pct):
-        self.df_day = read_data(TRATADOS_PATH / "df_day.parquet")
-        self.df_hour = read_data(TRATADOS_PATH / "df_hour.parquet")
-        self.df_10min = read_data(TRATADOS_PATH / "df_10min.parquet")
+        self.df_day = read_data(INSTITUTIONS_PATH / "agg_1_day")
+        self.df_hour = read_data(INSTITUTIONS_PATH / "agg_1_hour")
+        self.df_10min = read_data(INSTITUTIONS_PATH / "agg_10_minutes")
         self.pct = pct
         self.inst = None
         self.elapsed_time = {}
@@ -190,8 +191,34 @@ class timeInputer:
         self.df_10min = self.df_10min[self.df_10min["id_institution"].isin(inst)].reset_index(drop = True)
         self.inst = [int(c) for c in inst]
         joblib.dump(inst, "inst.joblib")
-    
+
+    def _merge_id_date(self, df: pd.DataFrame, time: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df["id_time"] = df["id_time"].astype(int) 
+        df = df.merge(time, on="id_time", how="left")
+        df["time"] = pd.to_datetime(df["time"], utc=True)
+
+        df["time"] = pd.to_datetime(pd.DataFrame(
+                {
+                    "year": df["time"].dt.year.astype("int"),
+                    "month": df["time"].dt.month.astype("int"),
+                    "day": df["time"].dt.day.astype("int"),
+                    "hour": df["time"].dt.hour.astype("int"),
+                    "minute": (round(df["time"].dt.minute.astype("int") /10))*10,
+                    "second": 0
+                }
+            )
+        )
+        df = df.sort_values(by = ["time", "id_institution"])
+        df.drop(columns=["id_time"], inplace=True)
+        df["id_institution"] = df["id_institution"].astype("int")
+        return df
+        
     def insertTimeRange(self):
+        self.df_day = self._merge_id_date(self.df_day, pd.read_csv(TIMES_PATH / 'times_1_day.csv'))
+        self.df_hour = self._merge_id_date(self.df_hour, pd.read_csv(TIMES_PATH / 'times_1_hour.csv'))
+        self.df_10min = self._merge_id_date(self.df_10min, pd.read_csv(TIMES_PATH / 'times_10_minutes.csv'))
+
         series_day = pd.Series( pd.date_range(start = self.df_day["time"].min(), end = self.df_day["time"].max(), freq = "D"), name = "time")
         series_hour = pd.Series(pd.date_range(start=self.df_hour["time"].min(), end=self.df_hour["time"].max(), freq='h'), name="time")
         series_10min = pd.Series(pd.date_range(start=self.df_10min["time"].min(), end=self.df_10min["time"].max(), freq='10min'), name="time") 
@@ -356,6 +383,11 @@ class timeInputer:
         for id in self.inst:
             filtro = df["id_institution"] == id
             df.loc[filtro, "n_bytes"] = pchip_fill_missing(df.loc[filtro, "n_bytes"])
+        return df
+
+    def _inputeBase(self, df_: pd.DataFrame) -> pd.DataFrame:
+        df = df_.copy()
+        df.loc[:, "n_bytes"] = df.loc[:, "n_bytes"].fillna(-1)
         return df
 
     @staticmethod
@@ -655,6 +687,7 @@ class timeInputer:
 
 
     def runFilling(self):
+        '''
         self.countTimeFilling("granufill", "hour", self._inputeWithGranularity, self.df_day, self.df_hour, 24)
         df_hour = self._inputeWithGranularity(self.df_day, self.df_hour, 24)   
         self.countTimeFilling("granufill", "10min", self._inputeWithGranularity, df_hour, self.df_10min, 24*6)
@@ -683,15 +716,19 @@ class timeInputer:
         self.countTimeFilling("seasonal", "10min", self._inputeWithSeasonal, self.df_10min, 144)
         self.countTimeFilling("pchip", "hour", self._inputeWithPchip, self.df_hour)
         self.countTimeFilling("pchip", "10min", self._inputeWithPchip, self.df_10min)
+        '''
+        self.countTimeFilling("base", "hour", self._inputeBase, self.df_hour)
+        self.countTimeFilling("base", "10min", self._inputeBase, self.df_10min)
 
         # Cada feature solicitada também passa a ser avaliada como um método de imputação.
         # O nome da pasta/método é exatamente o nome da métrica.
+        '''
         for metric in ALL_METRIC_IMPUTATIONS:
             self.countTimeFilling(metric, "hour", self._inputeWithMetric,
                                   self.df_hour, metric, "hour")
             self.countTimeFilling(metric, "10min", self._inputeWithMetric,
                                   self.df_10min, metric, "10min")
-        
+        '''
         #self.countTimeFilling("svd", "hour", self._inputeWithSVD, self.df_hour, 24)
         #self.countTimeFilling("svd", "10min", self._inputeWithSVD, self.df_10min, 144)
 
@@ -733,6 +770,6 @@ class timeInputer:
         
 
 if __name__ == "__main__":
-    processor = timeInputer(0.2)
+    processor = timeInputer(0.25)
     processor.runAll()
         
