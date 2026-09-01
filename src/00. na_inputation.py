@@ -17,6 +17,10 @@ from funcoes_de_predicao.funcoes_de_tratamento import (
     quadratic_fill_missing,
     moving_average_fill,
     moving_median_fill,
+    ffill_fill_missing,
+    ewma_fill_missing,
+    seasonal_fill_missing,
+    pchip_fill_missing,
 )
 
 
@@ -32,6 +36,7 @@ import joblib
 from time import perf_counter
 import json
 from statsmodels.tsa.seasonal import STL
+from sklearn.neighbors import KNeighborsRegressor
 
 
 def read_data(path):
@@ -62,6 +67,81 @@ ALL_METRIC_IMPUTATIONS = list(dict.fromkeys(
 ))
 
 
+def knn_with_granufill(df_greater: pd.DataFrame, df_less: pd.DataFrame, merging_features: list, target_feature: str, gran_diff: int, k: int = 3, weights: str = 'distance') -> pd.DataFrame:
+    # 1. Extração rápida da série alvo (a que possui os nulos)
+    target_series = df_less[target_feature].to_numpy(dtype=np.float32)
+    missing_mask = np.isnan(target_series)
+    
+    # 2. Fuga antecipada (Short-circuit)
+    if not missing_mask.any():
+        return df_less.copy()
+        
+    n_samples = len(target_series)
+    n_valid = np.count_nonzero(~missing_mask)
+    n_neighbors = min(k, n_valid)
+    
+    if n_neighbors == 0:
+        return df_less.copy()
+
+    # 3. Alinhamento dimensional: Extraindo a feature auxiliar do df_greater
+    # Pegamos as chaves de merge e o tempo sem sujar o df original
+    cols_align = list(set(merging_features + ['time']))
+    df_align = df_less[cols_align].copy()
+    
+    if gran_diff == 24:
+        df_align['time'] = df_align['time'].dt.floor('d')
+    else:
+        df_align['time'] = df_align['time'].dt.floor('h')
+        
+    # Trazemos apenas a coluna alvo do df_greater para não duplicar dados no merge
+    cols_greater = list(set(merging_features + [target_feature]))
+    df_merged = df_align.merge(df_greater[cols_greater], on=merging_features, how='left')
+    
+    # Agora greater_series tem exatamente o mesmo número de linhas que o df_less
+    greater_series = df_merged[target_feature].to_numpy(dtype=np.float32)
+
+    # 4. Normalização do Tempo
+    time_scaled = np.linspace(0, 1, n_samples, dtype=np.float32)
+    
+    # 5. Normalização da Feature Auxiliar
+    if np.isnan(greater_series).all():
+        greater_scaled = np.zeros(n_samples, dtype=np.float32)
+    else:
+        greater_min = np.nanmin(greater_series)
+        greater_max = np.nanmax(greater_series)
+        
+        if greater_max > greater_min:
+            greater_scaled = (greater_series - greater_min) / (greater_max - greater_min)
+        else:
+            greater_scaled = np.zeros(n_samples, dtype=np.float32)
+            
+    # O KNN não aceita nulos no 'X'. Se o df_greater não tinha dados para alguma hora, injetamos zero.
+    greater_scaled = np.nan_to_num(greater_scaled, nan=0.0)
+        
+    # 6. Separação de Treino (não-nulos) e Teste (nulos) 
+    # X_train e X_test agora possuem o Tempo + a Feature do df_greater
+    X = np.column_stack((time_scaled, greater_scaled))
+    
+    X_train = X[~missing_mask]
+    y_train = target_series[~missing_mask]
+    
+    X_test = X[missing_mask]
+    
+    # 7. Treinamento e Predição com KNeighborsRegressor
+    knn = KNeighborsRegressor(n_neighbors=n_neighbors, weights=weights)
+    knn.fit(X_train, y_train)
+    
+    predicted_values = knn.predict(X_test)
+    
+    # 8. Cópia e atribuição direta no array NumPy
+    target_series[missing_mask] = predicted_values
+    
+    df_result = df_less.copy()
+    df_result[target_feature] = target_series
+    
+    return df_result
+
+
 class timeInputer:
     def __init__(self,pct):
         self.df_day = read_data(TRATADOS_PATH / "df_day.parquet")
@@ -70,6 +150,7 @@ class timeInputer:
         self.pct = pct
         self.inst = None
         self.elapsed_time = {}
+        self._stl_cache = {}
     
     def filter_inst(self):
         inst = []
@@ -208,6 +289,25 @@ class timeInputer:
         df_lesser = df_lesser.reset_index(drop=True)
         return granufill(df_greater, df_lesser, merging_features = ["time", "id_institution"], target_feature = "n_bytes", gran_diff = gran_diff)
 
+    def _inputeWithKNNWithGranufill(self, df_greater: pd.DataFrame, df_lesser: pd.DataFrame, gran_diff: int, k: int = 3):
+        df_greater = df_greater.reset_index(drop=True)
+        df_lesser = df_lesser.reset_index(drop=True)
+        dfs = []
+        for id in self.inst:
+            filtro = df_lesser["id_institution"] == id
+            df_inst = df_lesser[filtro].reset_index(drop=True)
+            if not df_inst["n_bytes"].isna().any():
+                dfs.append(df_inst)
+                continue
+            dfs.append(knn_with_granufill(
+                df_greater, df_inst,
+                merging_features=["time", "id_institution"],
+                target_feature="n_bytes",
+                gran_diff=gran_diff,
+                k=k,
+            ))
+        return pd.concat(dfs, ignore_index=True)
+
 
     def _inputeWithCubic(self, df_: pd.DataFrame) -> pd.DataFrame:
         df = df_.copy()
@@ -228,6 +328,34 @@ class timeInputer:
         for id in self.inst:
             filtro = df["id_institution"] == id
             df.loc[filtro, "n_bytes"] = quadratic_fill_missing(df.loc[filtro, "n_bytes"])
+        return df
+
+    def _inputeWithFFill(self, df_: pd.DataFrame) -> pd.DataFrame:
+        df = df_.copy()
+        for id in self.inst:
+            filtro = df["id_institution"] == id
+            df.loc[filtro, "n_bytes"] = ffill_fill_missing(df.loc[filtro, "n_bytes"])
+        return df
+
+    def _inputeWithEWMA(self, df_: pd.DataFrame, span: int = 24) -> pd.DataFrame:
+        df = df_.copy()
+        for id in self.inst:
+            filtro = df["id_institution"] == id
+            df.loc[filtro, "n_bytes"] = ewma_fill_missing(df.loc[filtro, "n_bytes"], span=span)
+        return df
+
+    def _inputeWithSeasonal(self, df_: pd.DataFrame, lag: int = 144) -> pd.DataFrame:
+        df = df_.copy()
+        for id in self.inst:
+            filtro = df["id_institution"] == id
+            df.loc[filtro, "n_bytes"] = seasonal_fill_missing(df.loc[filtro, "n_bytes"], lag=lag)
+        return df
+
+    def _inputeWithPchip(self, df_: pd.DataFrame) -> pd.DataFrame:
+        df = df_.copy()
+        for id in self.inst:
+            filtro = df["id_institution"] == id
+            df.loc[filtro, "n_bytes"] = pchip_fill_missing(df.loc[filtro, "n_bytes"])
         return df
 
     @staticmethod
@@ -459,8 +587,12 @@ class timeInputer:
                       METRIC_GROUPS["stl_seasonal"] +
                       METRIC_GROUPS["stl_noise"]):
             period = 24 if granularity == "hour" else 24 * 6
-            stl_values = self._stl_metric_values(df_inst["n_bytes"], period=period)
-            return stl_values.get(metric, np.nan)
+            institution_id = int(df_inst["id_institution"].iloc[0])
+            cache_key = (institution_id, period)
+            # ponytail: uma única decomposição STL serve às 11 métricas STL; cache evita 11x o mesmo cálculo
+            if cache_key not in self._stl_cache:
+                self._stl_cache[cache_key] = self._stl_metric_values(df_inst["n_bytes"], period=period)
+            return self._stl_cache[cache_key].get(metric, np.nan)
 
         return self._basic_metric_value(df_inst["n_bytes"], metric, granularity)
 
@@ -527,6 +659,10 @@ class timeInputer:
         df_hour = self._inputeWithGranularity(self.df_day, self.df_hour, 24)   
         self.countTimeFilling("granufill", "10min", self._inputeWithGranularity, df_hour, self.df_10min, 24*6)
         del df_hour
+        self.countTimeFilling("knn_granufill", "hour", self._inputeWithKNNWithGranufill, self.df_day, self.df_hour, 24)
+        df_hour_knn = self._inputeWithKNNWithGranufill(self.df_day, self.df_hour, 24)
+        self.countTimeFilling("knn_granufill", "10min", self._inputeWithKNNWithGranufill, df_hour_knn, self.df_10min, 24*6)
+        del df_hour_knn
         self.countTimeFilling("moving_average", "hour", self._inputeWithMovingAverage, self.df_hour, 24)
         self.countTimeFilling("moving_average", "10min", self._inputeWithMovingAverage, self.df_10min, 24*6)    
         self.countTimeFilling("moving_median", "hour", self._inputeWithMovingMedian, self.df_hour, 24)
@@ -539,6 +675,14 @@ class timeInputer:
         self.countTimeFilling("linear", "10min", self._inputeWithLinear, self.df_10min)
         self.countTimeFilling("quadratic", "hour", self._inputeWithQuadratic, self.df_hour)
         self.countTimeFilling("quadratic", "10min", self._inputeWithQuadratic, self.df_10min)
+        self.countTimeFilling("ffill", "hour", self._inputeWithFFill, self.df_hour)
+        self.countTimeFilling("ffill", "10min", self._inputeWithFFill, self.df_10min)
+        self.countTimeFilling("ewma", "hour", self._inputeWithEWMA, self.df_hour, 24)
+        self.countTimeFilling("ewma", "10min", self._inputeWithEWMA, self.df_10min, 144)
+        self.countTimeFilling("seasonal", "hour", self._inputeWithSeasonal, self.df_hour, 24)
+        self.countTimeFilling("seasonal", "10min", self._inputeWithSeasonal, self.df_10min, 144)
+        self.countTimeFilling("pchip", "hour", self._inputeWithPchip, self.df_hour)
+        self.countTimeFilling("pchip", "10min", self._inputeWithPchip, self.df_10min)
 
         # Cada feature solicitada também passa a ser avaliada como um método de imputação.
         # O nome da pasta/método é exatamente o nome da métrica.

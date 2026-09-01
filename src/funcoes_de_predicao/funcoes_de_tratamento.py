@@ -8,6 +8,7 @@ from os import path,getcwd
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.impute import KNNImputer
 from scipy.linalg import svd
+from scipy.interpolate import PchipInterpolator
 
 
 def get_device():
@@ -307,3 +308,47 @@ def moving_median_fill(df_series: pd.Series, window_size: int = 3, center: bool 
         series_filled = series_filled.bfill().ffill()
         
     return series_filled
+
+
+def ffill_fill_missing(df_series: pd.Series) -> pd.Series:
+    """LOCF: último valor observado carregado adiante (last observation carried forward)."""
+    series_filled = pd.to_numeric(df_series.copy(), errors="coerce")
+    if not series_filled.isna().any():
+        return series_filled
+    return series_filled.ffill().bfill()
+
+
+def ewma_fill_missing(df_series: pd.Series, span: int = 24) -> pd.Series:
+    """Suavização exponencial (EWMA) para preencher os nulos."""
+    series_filled = pd.to_numeric(df_series.copy(), errors="coerce")
+    if not series_filled.isna().any():
+        return series_filled
+    ewm = series_filled.ewm(span=span, adjust=False).mean()
+    series_filled = series_filled.fillna(ewm)
+    if series_filled.isna().any():
+        series_filled = series_filled.bfill().ffill()
+    return series_filled
+
+
+def seasonal_fill_missing(df_series: pd.Series, lag: int = 144) -> pd.Series:
+    """Naive sazonal: repete o valor de uma estação (1 dia) atrás."""
+    series_filled = pd.to_numeric(df_series.copy(), errors="coerce")
+    if not series_filled.isna().any():
+        return series_filled
+    series_filled = series_filled.fillna(series_filled.shift(lag))
+    series_filled = series_filled.ffill().bfill()
+    return series_filled
+
+
+def pchip_fill_missing(df_series: pd.Series) -> pd.Series:
+    """Interpolação PCHIP (cúbica monotônica), preservando a monotonicidade local."""
+    series_filled = pd.to_numeric(df_series.copy(), errors="coerce")
+    if not series_filled.isna().any():
+        return series_filled
+    x = np.arange(len(series_filled))
+    valid = series_filled.notna().to_numpy()
+    if valid.sum() < 2:
+        return series_filled.ffill().bfill()
+    interp = PchipInterpolator(x[valid], series_filled[valid].to_numpy(dtype=float))
+    series_filled.loc[~valid] = interp(x[~valid])
+    return series_filled.ffill().bfill()
