@@ -39,34 +39,6 @@ import json
 from statsmodels.tsa.seasonal import STL
 from sklearn.neighbors import KNeighborsRegressor
 
-'''
-def read_data(path):
-    """Read a treated parquet (time, id_institution, n_bytes) as a pandas DataFrame."""
-    return pl.read_parquet(path).to_pandas()
-'''
-
-METRIC_GROUPS = {
-    "statistical": ["mean", "std", "variance", "minimum", "maximum", "range",
-                    "median", "q10", "q25", "q75", "q90", "q95"],
-    "variability": ["cv", "fano", "burstiness", "peak_mean"],
-    "sparsity": ["zero_ratio", "active_ratio", "missing_ratio", "n_available"],
-    "distribution": ["entropy", "skewness", "kurtosis", "iqr"],
-    "temporal": ["acf_lag1", "acf_lag2", "local_trend", "previous_hour_mean"],
-    "stl_trend": ["stl_trend_mean", "stl_trend_std", "stl_trend_slope"],
-    "stl_seasonal": ["stl_seasonal_mean", "stl_seasonal_std",
-                     "stl_seasonal_amplitude", "stl_seasonal_ratio"],
-    "stl_noise": ["stl_noise_mean", "stl_noise_std",
-                  "stl_noise_abs_mean", "stl_noise_ratio"],
-    "weekly": ["mean_w", "std_w", "cv_w", "acf_lag1_w"],
-    "cross_granularity": ["gm10_mean", "gm10_std", "gm10_max", "gm10_min",
-                          "gm10_sum", "gm10_count", "gm10_active_ratio", "gm10_cv"],
-}
-
-# Lista única, preservando a ordem dos grupos.
-ALL_METRIC_IMPUTATIONS = list(dict.fromkeys(
-    metric for metrics in METRIC_GROUPS.values() for metric in metrics
-))
-
 
 def knn_with_granufill(df_greater: pd.DataFrame, df_less: pd.DataFrame, merging_features: list, target_feature: str, gran_diff: int, k: int = 3, weights: str = 'distance') -> pd.DataFrame:
     # 1. Extração rápida da série alvo (a que possui os nulos)
@@ -719,18 +691,6 @@ class timeInputer:
         '''
         self.countTimeFilling("base", "hour", self._inputeBase, self.df_hour)
         self.countTimeFilling("base", "10min", self._inputeBase, self.df_10min)
-
-        # Cada feature solicitada também passa a ser avaliada como um método de imputação.
-        # O nome da pasta/método é exatamente o nome da métrica.
-        '''
-        for metric in ALL_METRIC_IMPUTATIONS:
-            self.countTimeFilling(metric, "hour", self._inputeWithMetric,
-                                  self.df_hour, metric, "hour")
-            self.countTimeFilling(metric, "10min", self._inputeWithMetric,
-                                  self.df_10min, metric, "10min")
-        '''
-        #self.countTimeFilling("svd", "hour", self._inputeWithSVD, self.df_hour, 24)
-        #self.countTimeFilling("svd", "10min", self._inputeWithSVD, self.df_10min, 144)
 
         with open(DATA_PATH / "tratados" / str(self.pct) / "elapsed_time.json", "w") as f:
             json.dump(self.elapsed_time, f, indent=4)

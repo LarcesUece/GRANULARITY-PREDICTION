@@ -1,9 +1,14 @@
-dados/
 data/
+!data/placeholder.md
+!data/tratados_stored/placeholder.md
+!data/tratados/placeholder.md
+!data/tratados_stored/placeholder.md
 src/.ipynb_checkpoints/
 MODELOS/
 .venv
 __pycache__/
 *.py[cod]
-RESULTADOS/*
+resultados/*
+!resultados/placeholder.md
 graficos_stored/*
+tests/*

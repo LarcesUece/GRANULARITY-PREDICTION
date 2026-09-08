@@ -26,14 +26,14 @@ from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).resolve().parent.parent
 NOTEBOOKS_DIR = ROOT / "src" / "notebooks"
+FUNCTIONS_PATH = ROOT / "src" / "funcoes_de_predicao"
+sys.path.append(str(FUNCTIONS_PATH))
 if str(NOTEBOOKS_DIR) not in sys.path:
     sys.path.insert(0, str(NOTEBOOKS_DIR))
 
 os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-FUNCTIONS_PATH = ROOT /"src"/ "funcoes"
-import sys
-sys.path.append(str(FUNCTIONS_PATH))
+
 torch = None
 nn = None
 DataLoader = None
