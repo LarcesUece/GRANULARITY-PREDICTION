@@ -8,6 +8,7 @@ from os import path,getcwd
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.impute import KNNImputer
 from scipy.linalg import svd
+from scipy.interpolate import PchipInterpolator
 
 
 def get_device():
@@ -34,7 +35,9 @@ def read_data(folder: str, features: list[str] = ["id_time", "n_bytes"]   ) -> l
         lista_dia.append(df)
 
     print("\n--- All dataframes loaded successfully! ---")
-    return pd.concat(lista_dia, ignore_index=True)
+    df =pd.concat(lista_dia, ignore_index=True)
+    df = df.reset_index(drop=True)
+    return df
 
 
 def treino_val_teste(df = pd.Series, t_treino = 0, t_teste = 0, t_val = 0):
@@ -61,14 +64,39 @@ def scaling(df_series: pd.Series, mode = 0, scaler = None) -> pd.Series:
 
 
 
-def granufill(df_greater:pd.DataFrame,df_less:pd.DataFrame, merging_features: list, target_feature: str, gran_diff: int ) -> pd.DataFrame:
+def granufill(df_greater: pd.DataFrame, df_less: pd.DataFrame, merging_features: list, target_feature: str, gran_diff: int) -> pd.DataFrame:
     try:
-        df_merged = df_less.merge(df_greater, on=merging_features, how="left", suffixes=(None,"_greater") )
-        df_merged[target_feature] = df_merged[target_feature].fillna(df_merged[f"{target_feature}_greater"] / gran_diff)
-        return df_merged[df_less.columns]   
+        # Cria cópia para evitar que o .dt.floor altere o df_less original permanentemente em memória
+        df_less_copy = df_less.copy()
+        
+        # Guarda o tempo original numa coluna que participará do merge
+
+        df_less_copy["time_original"] = df_less_copy["time"]
+        
+        if gran_diff == 24:
+            df_less_copy["time"] = df_less_copy["time"].dt.floor("d")
+        else:
+            df_less_copy["time"] = df_less_copy["time"].dt.floor("h")
+
+        # Executa o merge
+        df_merged = df_less_copy.merge(df_greater, on=merging_features, how="left", suffixes=(None, "_greater"))
+
+        # Preenche os nulos. 
+        # (Se o df_greater não tinha a chave, o _greater será NaN, e o fillna ignorará essa linha)
+        col_greater = f"{target_feature}_greater"
+        df_merged[target_feature] = df_merged[target_feature].fillna(df_merged[col_greater] / gran_diff)
+
+
+        # Restaura o tempo utilizando o alinhamento interno do próprio df_merged
+        df_merged["time"] = df_merged["time_original"]
+
+        # Retorna apenas as colunas originais
+        df_merged = df_merged[df_less.columns]
+        return df_merged
+        
     except Exception as e:
         print(f"Erro ao preencher granularidade: {e}")
-        return df_less 
+        return df_less
 
 
 def knn_fill_missing(df_series: pd.Series, k: int = 3, weights: str = 'distance') -> pd.Series:
@@ -144,7 +172,7 @@ def cubic_fill_missing(df_series: pd.Series) -> pd.Series:
     if not series_filled.isna().any():
         return series_filled
         
-    series_filled = series_filled.interpolate(method='cubic')
+    series_filled = series_filled.interpolate(method='cubic').bfill().ffill()
         
     return series_filled
 
@@ -159,7 +187,7 @@ def linear_fill_missing(df_series: pd.Series) -> pd.Series:
     if not series_filled.isna().any():
         return series_filled
         
-    series_filled = series_filled.interpolate(method='linear')
+    series_filled = series_filled.interpolate(method='linear').bfill().ffill()
         
     return series_filled
 
@@ -174,7 +202,7 @@ def quadratic_fill_missing(df_series: pd.Series) -> pd.Series:
     if not series_filled.isna().any():
         return series_filled
         
-    series_filled = series_filled.interpolate(method='quadratic')
+    series_filled = series_filled.interpolate(method='quadratic').bfill().ffill()
         
     return series_filled
 
@@ -280,3 +308,47 @@ def moving_median_fill(df_series: pd.Series, window_size: int = 3, center: bool 
         series_filled = series_filled.bfill().ffill()
         
     return series_filled
+
+
+def ffill_fill_missing(df_series: pd.Series) -> pd.Series:
+    """LOCF: último valor observado carregado adiante (last observation carried forward)."""
+    series_filled = pd.to_numeric(df_series.copy(), errors="coerce")
+    if not series_filled.isna().any():
+        return series_filled
+    return series_filled.ffill().bfill()
+
+
+def ewma_fill_missing(df_series: pd.Series, span: int = 24) -> pd.Series:
+    """Suavização exponencial (EWMA) para preencher os nulos."""
+    series_filled = pd.to_numeric(df_series.copy(), errors="coerce")
+    if not series_filled.isna().any():
+        return series_filled
+    ewm = series_filled.ewm(span=span, adjust=False).mean()
+    series_filled = series_filled.fillna(ewm)
+    if series_filled.isna().any():
+        series_filled = series_filled.bfill().ffill()
+    return series_filled
+
+
+def seasonal_fill_missing(df_series: pd.Series, lag: int = 144) -> pd.Series:
+    """Naive sazonal: repete o valor de uma estação (1 dia) atrás."""
+    series_filled = pd.to_numeric(df_series.copy(), errors="coerce")
+    if not series_filled.isna().any():
+        return series_filled
+    series_filled = series_filled.fillna(series_filled.shift(lag))
+    series_filled = series_filled.ffill().bfill()
+    return series_filled
+
+
+def pchip_fill_missing(df_series: pd.Series) -> pd.Series:
+    """Interpolação PCHIP (cúbica monotônica), preservando a monotonicidade local."""
+    series_filled = pd.to_numeric(df_series.copy(), errors="coerce")
+    if not series_filled.isna().any():
+        return series_filled
+    x = np.arange(len(series_filled))
+    valid = series_filled.notna().to_numpy()
+    if valid.sum() < 2:
+        return series_filled.ffill().bfill()
+    interp = PchipInterpolator(x[valid], series_filled[valid].to_numpy(dtype=float))
+    series_filled.loc[~valid] = interp(x[~valid])
+    return series_filled.ffill().bfill()

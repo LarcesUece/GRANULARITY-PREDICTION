@@ -4,6 +4,8 @@ import seaborn as sns
 import numpy as np
 from pathlib import Path
 import json
+from glob import glob
+from os import path,getcwd
 
 def load_metrics(metrics_path):
     data = []
@@ -186,23 +188,42 @@ def main():
     # Estrutura de pastas baseada em /home/ismael/Documentos/GRANULARITY-PREDICTION
     base_dir = Path(__file__).resolve().parents[1]
     resultados_dir = base_dir / "RESULTADOS"
-    pred_pipeline_dir = resultados_dir / "prediction_pipeline"
+    graficos_base_dir = resultados_dir / "graficos"
     
-    metrics_path = pred_pipeline_dir / "metrics.jsonl"
-    predictions_dir = pred_pipeline_dir / "predictions"
-    output_dir = resultados_dir / "graficos"
+    # Encontra recursivamente todos os arquivos de métricas
+    metrics_files = list(resultados_dir.rglob("metrics.jsonl"))
     
-    elapsed_time_path = base_dir / "data" / "tratados_stored" / "elapsed_time.json"
+    if not metrics_files:
+        print(f"Nenhum arquivo metrics.jsonl encontrado em {resultados_dir}")
     
-    # Cria o diretório de saída caso não exista
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    if not metrics_path.exists():
-        print(f"Arquivo de métricas não encontrado: {metrics_path}")
-    else:
+    for metrics_path in metrics_files:
+        # Pega a pasta onde esse metrics.jsonl está (ex: RESULTADOS/0.05/knn)
+        run_dir = metrics_path.parent
+        
+        # Caminho relativo em relação a RESULTADOS (ex: 0.05/knn)
+        rel_path = run_dir.relative_to(resultados_dir)
+        output_subpath = str(rel_path)
+        
+        # Evita reprocessar se por acaso ele encontrar dentro da própria pasta graficos ou metrics antigo
+        if "graficos" in output_subpath or "metrics" in output_subpath or output_subpath == "prediction_pipeline":
+            # Caso queira ignorar pastas antigas como 'prediction_pipeline' descomente ou deixe rolar
+            pass
+            
+        print(f"\n{'='*60}\nGerando gráficos para a pasta: {output_subpath}\n{'='*60}")
+        
+        predictions_dir = run_dir / "predictions"
+        output_dir = graficos_base_dir / output_subpath
+        
+        # Cria o diretório de saída caso não exista
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
         print("Carregando métricas...")
         df = load_metrics(metrics_path)
         
+        if df.empty:
+            print(f"Aviso: {metrics_path} está vazio ou malformado.")
+            continue
+            
         print("Gerando gráficos de comparação de métricas...")
         plot_metrics(df, output_dir)
         
@@ -211,11 +232,21 @@ def main():
         
         print("Gerando gráficos de degradação (horizonte de predição)...")
         plot_degradation(df, predictions_dir, output_dir)
+        
+        print(f"Gráficos gerados com sucesso na pasta: {output_dir}")
     
-    print("Gerando gráfico de tempo de execução...")
-    plot_elapsed_time(elapsed_time_path, output_dir)
-    
-    print(f"Gráficos gerados com sucesso na pasta: {output_dir}")
+    # O gráfico de tempo de execução é um só para todos os métodos
+    elapsed_time_path = base_dir / "data" / "tratados" / "elapsed_time.json"
+    if elapsed_time_path.exists():
+        print("\nGerando gráfico geral de tempo de execução...")
+        plot_elapsed_time(elapsed_time_path, graficos_base_dir)
+    else:
+        # Procura no caminho original caso tenha mudado
+        old_path = base_dir / "data" / "tratados_stored" / "elapsed_time.json"
+        if old_path.exists():
+            print("\nGerando gráfico geral de tempo de execução...")
+            plot_elapsed_time(old_path, graficos_base_dir)
+
 
 if __name__ == "__main__":
     main()

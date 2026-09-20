@@ -1,0 +1,57 @@
+# Algorithm 1: Iterative Bayesian Inference Algorithm
+
+Set initial values for $\alpha_k^{(0)}$, $k = 1, \ldots, K$
+
+$m = 1$
+
+**repeat**
+
+&nbsp;&nbsp;&nbsp;&nbsp;**for** $k = 1$ **to** $K$ **do**
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**for** $i = 1$ **to** $N$ **do**
+
+\[
+\beta_{ki}^{(m)}
+=
+\frac{\alpha_k^{(m)} p_{ki}}
+{\sum_{j=1}^{K} \alpha_j^{(m)} p_{ji}}
+\]
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;**end for**
+
+&nbsp;&nbsp;&nbsp;&nbsp;**end for**
+
+&nbsp;&nbsp;&nbsp;&nbsp;**for** $k = 1$ **to** $K$ **do**
+
+\[
+\alpha_k^{(m+1)}
+=
+\frac{1}{N}
+\sum_{i=1}^{N}
+\beta_{ki}^{(m)}
+\]
+
+&nbsp;&nbsp;&nbsp;&nbsp;**end for**
+
+\[
+m = m + 1
+\]
+
+**until**
+
+\[
+\left|\alpha_k^{(m+1)} - \alpha_k^{(m)}\right|
+\leq \epsilon,
+\qquad
+k = 1, \ldots, K
+\]
+
+## Algorithm Description
+
+In the algorithm, $\alpha_k^{(m)}$ and $\beta_{ki}^{(m)}$ denote respectively the values of $\alpha_k$ and $\beta_{ki}$ in the $m$th iteration, and $\alpha_k^{0} \in (0,1)$ denotes the initial value of $\alpha_k$, $k = 1,\ldots,K$, $i = 1,\ldots,N$.
+
+This algorithm is an Expectation and Maximization (EM) algorithm [14]. Each iteration contains two steps: In the E-step, we update $\beta_{ki}^{(m)}$ from $\alpha_k^{(m)}$ [following (1)] in order to obtain the expected number of observations in each class; in the M-step, we update $\alpha_k^{(m+1)}$ from $\beta_{ki}^{(m)}$ based on the definition of $\alpha_k$.
+
+The iteration continues until the difference of $\alpha_k$ between two iterations is below a convergence threshold, $\epsilon$, for $k = 1,\ldots,K$. The convergence of this algorithm follows from the convergence property of an EM algorithm [14].
+
+We prove that this algorithm converges to the unique MLE of $\alpha_k$ and $\beta_{ki}$, as stated in the following theorem; the proof is found in Appendix III.
