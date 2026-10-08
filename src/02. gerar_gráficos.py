@@ -15,7 +15,19 @@ def load_metrics(metrics_path):
                 data.append(json.loads(line))
     
     df = pd.json_normalize(data)
+    if not df.empty:
+        df = df.drop_duplicates(subset=['dataset', 'model', 'batch_size'], keep='last')
     return df
+
+
+def rmse_per_horizon(y_true, y_pred):
+    y_true = np.asarray(y_true, dtype=np.float64)
+    y_pred = np.asarray(y_pred, dtype=np.float64)
+    if y_true.ndim != 2 or y_true.shape != y_pred.shape or 0 in y_true.shape:
+        raise ValueError('Expected matching nonempty (samples, horizon) arrays.')
+    if not np.isfinite(y_true).all() or not np.isfinite(y_pred).all():
+        raise ValueError('Predictions and targets must contain only finite values.')
+    return np.sqrt(np.mean(np.square(y_true - y_pred), axis=0))
 
 def plot_metrics(df, output_dir):
     """
@@ -53,7 +65,7 @@ def plot_predictions(df, predictions_dir, output_dir):
         dataset_df = df[df['dataset'] == dataset]
         
         # Mantém apenas um registro único por modelo e batch_size para evitar legendas duplicadas
-        unique_runs = dataset_df.drop_duplicates(subset=['model', 'batch_size']).sort_values(['model', 'batch_size'])
+        unique_runs = dataset_df.drop_duplicates(subset=['model', 'batch_size'], keep='last').sort_values(['model', 'batch_size'])
             
         fig, ax = plt.subplots(figsize=(45, 6))
         
@@ -118,7 +130,7 @@ def plot_degradation(df, predictions_dir, output_dir):
             plotted_anything = False
             
             # Remove duplicatas de batch_size (mantendo a primeira) e ordena para a legenda
-            model_df = model_df.drop_duplicates(subset=['batch_size']).sort_values('batch_size')
+            model_df = model_df.drop_duplicates(subset=['batch_size'], keep='last').sort_values('batch_size')
             
             for _, row in model_df.iterrows():
                 batch_size = row['batch_size']
@@ -135,7 +147,7 @@ def plot_degradation(df, predictions_dir, output_dir):
                 # Verifica se a dimensão é 2D (n_amostras, horizonte)
                 if y_true.ndim >= 2:
                     # Calcula o RMSE para cada passo no horizonte
-                    rmse_per_step = np.sqrt(np.mean((y_true - y_pred)**2, axis=0))
+                    rmse_per_step = rmse_per_horizon(y_true, y_pred)
                     steps = np.arange(1, len(rmse_per_step) + 1)
                     
                     ax.plot(steps, rmse_per_step, label=f'Batch {batch_size}', linewidth=2, alpha=0.8)
@@ -144,7 +156,7 @@ def plot_degradation(df, predictions_dir, output_dir):
             if plotted_anything:
                 ax.set_title(f'Degradação do RMSE no Horizonte\nDataset: {dataset.capitalize()} | Modelo: {model}')
                 ax.set_xlabel('Passos Futuros (Horizonte)')
-                ax.set_ylabel('RMSE (Test)')
+                ax.set_ylabel('RMSE (amostra de teste; escala do arquivo)')
                 ax.legend(title='Batch Size')
                 ax.grid(True, linestyle='--', alpha=0.6)
                 

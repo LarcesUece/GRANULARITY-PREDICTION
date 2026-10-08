@@ -31,7 +31,7 @@ if str(NOTEBOOKS_DIR) not in sys.path:
 
 os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-FUNCTIONS_PATH = ROOT /"src"/ "funcoes"
+FUNCTIONS_PATH = ROOT / "src" / "funcoes_de_predicao"
 import sys
 sys.path.append(str(FUNCTIONS_PATH))
 torch = None
@@ -865,14 +865,19 @@ def run_training(args: argparse.Namespace) -> None:
                 )
 
                 sample_size = min(args.prediction_sample, len(dataset.y_test))
-                y_pred = wrapper.predict(X_test[:sample_size], batch_size=batch_size * 2)
-                sample_metrics = avaliar_modelo(dataset.y_test[:sample_size], y_pred, verbose=False)
+                # Cover the whole test set, which is concatenated by institution.
+                sample_indices = np.sort(np.random.default_rng(42).choice(
+                    len(dataset.y_test), size=sample_size, replace=False,
+                ))
+                y_sample = dataset.y_test[sample_indices]
+                y_pred = wrapper.predict(X_test[sample_indices], batch_size=batch_size * 2)
+                sample_metrics = avaliar_modelo(y_sample, y_pred, verbose=False)
 
                 run_name = f"{spec.name}_{model_name}_bs{batch_size}"
                 model_path = args.output_dir / "models" / f"{run_name}.pt"
                 pred_path = args.output_dir / "predictions" / f"{run_name}.npz"
                 save_wrapper_checkpoint(wrapper, model_path)
-                save_predictions(pred_path, dataset.y_test[:sample_size], y_pred)
+                save_predictions(pred_path, y_sample, y_pred)
 
                 row = {
                     "dataset": spec.name,
@@ -885,6 +890,8 @@ def run_training(args: argparse.Namespace) -> None:
                     "val": val_metrics,
                     "test": test_metrics,
                     "prediction_sample": sample_metrics,
+                    "prediction_sample_selection": "random_seed_42",
+                    "prediction_sample_size": sample_size,
                     "model_path": str(model_path),
                     "prediction_path": str(pred_path),
                     "device": str(device),
@@ -939,6 +946,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--compile", action="store_true", help="Try torch.compile for model execution.")
     parser.set_defaults(amp=True)
     args = parser.parse_args(argv)
+    if args.prediction_sample <= 0:
+        raise ValueError("--prediction-sample must be positive.")
     if args.require_gpu:
         args.allow_cpu = False
 
