@@ -1,7 +1,7 @@
 """GPU-oriented prediction pipeline for CESNET24 time-series parquet files.
 
 The pipeline loads treated parquet files from ``tratados/``, builds chronological
-sliding windows per institution, trains MLP/RNN/LSTM/GRU models for batch sizes
+sliding windows per institution, trains MLP/RNN/LSTM/GRU/Transformer models for batch sizes
 128 and 256, and evaluates each run with the project evaluation helpers.
 """
 
@@ -43,6 +43,7 @@ generate_GRU = None
 generate_LSTM = None
 generate_MLP_model = None
 generate_RNN = None
+generate_Transformer = None
 save_torch_model = None
 _avaliar_modelo_em_batches = None
 avaliar_modelo = None
@@ -56,7 +57,7 @@ class CudaConfigurationError(RuntimeError):
     """Raised when CUDA is required but PyTorch cannot use it."""
 
 
-MODEL_NAMES = ("MLP", "RNN", "LSTM", "GRU")
+MODEL_NAMES = ("MLP", "RNN", "LSTM", "GRU", "Transformer")
 BATCH_SIZES = (256,128)
 
 
@@ -80,6 +81,7 @@ def ensure_runtime_dependencies() -> None:
     global generate_LSTM
     global generate_MLP_model
     global generate_RNN
+    global generate_Transformer
     global nn
     global save_torch_model
     global torch
@@ -106,6 +108,7 @@ def ensure_runtime_dependencies() -> None:
     from funcoes_de_treinamento import generate_LSTM as generate_LSTM_func
     from funcoes_de_treinamento import generate_MLP_model as generate_MLP_model_func
     from funcoes_de_treinamento import generate_RNN as generate_RNN_func
+    from funcoes_de_treinamento import generate_Transformer as generate_Transformer_func
     from funcoes_de_treinamento import save_torch_model as save_torch_model_func
 
     torch = torch_module
@@ -119,6 +122,7 @@ def ensure_runtime_dependencies() -> None:
     generate_LSTM = generate_LSTM_func
     generate_MLP_model = generate_MLP_model_func
     generate_RNN = generate_RNN_func
+    generate_Transformer = generate_Transformer_func
     save_torch_model = save_torch_model_func
 
 
@@ -670,7 +674,8 @@ def build_model(model_name: str, dataset: WindowedDataset, device: torch.device)
         return wrapper, dataset.X_train_mlp, dataset.X_val_mlp, dataset.X_test_mlp
 
     units = 128
-    config_key = {"RNN": "rnn_units", "LSTM": "lstm_units", "GRU": "gru_units"}[model_name]
+    config_key = {"RNN": "rnn_units", "LSTM": "lstm_units", "GRU": "gru_units",
+                  "Transformer": "transformer_units"}[model_name]
     config = {
         "n_timesteps": dataset.spec.lookback,
         "n_features": 1,
@@ -682,6 +687,7 @@ def build_model(model_name: str, dataset: WindowedDataset, device: torch.device)
         "RNN": generate_RNN,
         "LSTM": generate_LSTM,
         "GRU": generate_GRU,
+        "Transformer": generate_Transformer,
     }
     wrapper = TorchRegressionModel(
         generator[model_name](**config),

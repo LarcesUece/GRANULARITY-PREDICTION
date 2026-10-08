@@ -113,6 +113,39 @@ class RecurrentRegressor(nn.Module):
         return self.output(self.dropout(last))
 
 
+class TransformerRegressor(nn.Module):
+    def __init__(self, n_timesteps, n_features, n_outputs, dropout_rate=0.2,
+                 transformer_units=128, n_heads=4, layers=2):
+        super().__init__()
+        if n_timesteps < 1 or transformer_units < 1 or n_heads < 1 or transformer_units % n_heads:
+            raise ValueError("Positive timesteps and units divisible by positive n_heads are required.")
+        self.input = nn.Linear(n_features, transformer_units)
+        positions = torch.arange(n_timesteps, dtype=torch.float32).unsqueeze(1)
+        frequencies = torch.exp(torch.arange(0, transformer_units, 2, dtype=torch.float32)
+                                * (-np.log(10000.0) / transformer_units))
+        encoding = torch.zeros(1, n_timesteps, transformer_units)
+        encoding[0, :, 0::2] = torch.sin(positions * frequencies)
+        encoding[0, :, 1::2] = torch.cos(positions * frequencies[:transformer_units // 2])
+        self.register_buffer("position_encoding", encoding)
+        layer = nn.TransformerEncoderLayer(
+            d_model=transformer_units, nhead=n_heads, dim_feedforward=transformer_units * 4,
+            dropout=dropout_rate, batch_first=True,
+        )
+        self.encoder = nn.TransformerEncoder(layer, num_layers=layers)
+        # Initialize cloned encoder layers independently.
+        for encoder_layer in self.encoder.layers:
+            for parameter in encoder_layer.parameters():
+                if parameter.ndim > 1:
+                    nn.init.xavier_uniform_(parameter)
+        self.output = nn.Linear(transformer_units, n_outputs)
+
+    def forward(self, x):
+        if x.ndim != 3 or x.shape[1] != self.position_encoding.shape[1]:
+            raise ValueError("Expected (batch, configured timesteps, features).")
+        encoded = self.encoder(self.input(x) + self.position_encoding)
+        return self.output(encoded[:, -1, :])
+
+
 class TorchRegressionModel:
     def __init__(self, model, model_type, config, expects_sequence=False, device=None):
         self.model = model
@@ -169,6 +202,12 @@ def generate_RNN(
     rnn_units=64,
 ):
     return RecurrentRegressor("RNN", n_features, n_outputs, dropout_rate, rnn_units)
+
+
+def generate_Transformer(n_timesteps, n_features, n_outputs, dropout_rate=0.2,
+                         transformer_units=128, n_heads=4, layers=2):
+    return TransformerRegressor(n_timesteps, n_features, n_outputs, dropout_rate,
+                                transformer_units, n_heads, layers)
 
 
 def generate_MLP_model(input_len, output, dropout_rate=0.2, dense_units=500, layers=3):
@@ -331,6 +370,8 @@ def load_torch_model(path, device=None):
         model = generate_LSTM(**config)
     elif model_type == "RNN":
         model = generate_RNN(**config)
+    elif model_type == "Transformer":
+        model = generate_Transformer(**config)
     else:
         raise ValueError(f"Unsupported model type in checkpoint: {model_type}")
 
