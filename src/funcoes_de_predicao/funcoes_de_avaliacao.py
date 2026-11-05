@@ -70,7 +70,9 @@ def avaliar_modelo(y_real, y_previsto, verbose = False):
     return {"RMSE": rmse, "MAE": mae, "NRMSE": nrmse, "SMAPE": _smape}
 
 
-def _avaliar_modelo_em_batches(X_test, y_test, modelo, batch_size=4096, verbose=False):
+def _avaliar_modelo_em_batches(X_test, y_test, modelo, batch_size=4096, verbose=False, per_horizon=False):
+    if per_horizon and (y_test.ndim != 2 or len(y_test) == 0):
+        raise ValueError("Per-horizon evaluation requires nonempty (samples, horizon) targets.")
     device = modelo.device
     X_tensor = torch.as_tensor(X_test, dtype=torch.float32)
     y_tensor = torch.as_tensor(y_test, dtype=torch.float32)
@@ -85,6 +87,7 @@ def _avaliar_modelo_em_batches(X_test, y_test, modelo, batch_size=4096, verbose=
     total_abs_error = 0.0
     total_smape = 0.0
     total_elements = 0
+    horizon_sq_error = torch.zeros(y_tensor.shape[1], dtype=torch.float64, device=device) if per_horizon else None
     data_min = None
     data_max = None
 
@@ -95,6 +98,8 @@ def _avaliar_modelo_em_batches(X_test, y_test, modelo, batch_size=4096, verbose=
             y_batch = _move_batch(y_batch, device)
             y_pred = modelo.model(X_batch)
             diff = y_batch - y_pred
+            if per_horizon:
+                horizon_sq_error += diff.double().square().sum(dim=0)
             total_sq_error += float(torch.sum(diff ** 2).detach().cpu())
             total_abs_error += float(torch.sum(torch.abs(diff)).detach().cpu())
             denominator = torch.maximum(
@@ -124,7 +129,10 @@ def _avaliar_modelo_em_batches(X_test, y_test, modelo, batch_size=4096, verbose=
         print(f"NRMSE: {nrmse:.4f}")
         print("-" * 30)
     _clear_torch_memory()
-    return {"RMSE": rmse, "MAE": mae, "NRMSE": nrmse, "SMAPE": _smape}
+    metrics = {"RMSE": rmse, "MAE": mae, "NRMSE": nrmse, "SMAPE": _smape}
+    if per_horizon:
+        metrics["RMSE_per_horizon"] = (horizon_sq_error / len(y_tensor)).sqrt().cpu().tolist()
+    return metrics
 
 
 def comparar_desempeho_granularidade(X_test_d, X_test_h, X_test_10m, y_test_d, y_test_h, y_test_10m, MODELO_d, MODELO_h,MODELO_10MIN):

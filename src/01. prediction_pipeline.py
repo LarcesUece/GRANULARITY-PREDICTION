@@ -787,10 +787,10 @@ def save_wrapper_checkpoint(wrapper: TorchRegressionModel, path: Path) -> None:
         wrapper.model = compiled_model
 
 
-def save_predictions(path: Path, y_true: np.ndarray, y_pred: np.ndarray) -> None:
+def save_predictions(path: Path, y_true: np.ndarray, y_pred: np.ndarray, **evaluation) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"y_true": y_true.astype(np.float32), "y_pred": y_pred.astype(np.float32)}
-    np.savez_compressed(path, **payload)
+    np.savez_compressed(path, **payload, **evaluation)
 
 
 def run_training(args: argparse.Namespace) -> None:
@@ -834,6 +834,9 @@ def run_training(args: argparse.Namespace) -> None:
             f"lookback={spec.lookback} horizon={spec.horizon}"
         )
 
+        sample_size = min(args.prediction_sample, len(dataset.y_test))
+        sample_indices = np.random.default_rng(42).choice(len(dataset.y_test), sample_size, replace=False)
+
         for batch_size in args.batch_sizes:
             for model_name in args.models:
                 clear_memory()
@@ -862,17 +865,22 @@ def run_training(args: argparse.Namespace) -> None:
                     wrapper,
                     batch_size=batch_size * 2,
                     verbose=True,
+                    per_horizon=True,
                 )
 
-                sample_size = min(args.prediction_sample, len(dataset.y_test))
-                y_pred = wrapper.predict(X_test[:sample_size], batch_size=batch_size * 2)
-                sample_metrics = avaliar_modelo(dataset.y_test[:sample_size], y_pred, verbose=False)
+                y_pred = wrapper.predict(X_test[sample_indices], batch_size=batch_size * 2)
+                sample_metrics = avaliar_modelo(dataset.y_test[sample_indices], y_pred, verbose=False)
 
                 run_name = f"{spec.name}_{model_name}_bs{batch_size}"
                 model_path = args.output_dir / "models" / f"{run_name}.pt"
                 pred_path = args.output_dir / "predictions" / f"{run_name}.npz"
                 save_wrapper_checkpoint(wrapper, model_path)
-                save_predictions(pred_path, dataset.y_test[:sample_size], y_pred)
+                save_predictions(
+                    pred_path, dataset.y_test[sample_indices], y_pred,
+                    sample_indices=sample_indices,
+                    test_rmse_per_horizon=np.asarray(test_metrics["RMSE_per_horizon"]),
+                    test_sample_count=len(dataset.y_test),
+                )
 
                 row = {
                     "dataset": spec.name,
@@ -885,6 +893,8 @@ def run_training(args: argparse.Namespace) -> None:
                     "val": val_metrics,
                     "test": test_metrics,
                     "prediction_sample": sample_metrics,
+                    "prediction_sample_selection": "random_seed_42",
+                    "prediction_sample_size": sample_size,
                     "model_path": str(model_path),
                     "prediction_path": str(pred_path),
                     "device": str(device),
@@ -939,6 +949,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--compile", action="store_true", help="Try torch.compile for model execution.")
     parser.set_defaults(amp=True)
     args = parser.parse_args(argv)
+    if args.prediction_sample <= 0:
+        raise ValueError("--prediction-sample must be positive.")
     if args.require_gpu:
         args.allow_cpu = False
 

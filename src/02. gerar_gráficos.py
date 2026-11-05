@@ -128,19 +128,20 @@ def plot_degradation(df, predictions_dir, output_dir):
                 if not pred_path.exists():
                     continue
                     
-                data = np.load(pred_path)
-                y_true = data['y_true']
-                y_pred = data['y_pred']
-                
-                # Verifica se a dimensão é 2D (n_amostras, horizonte)
-                if y_true.ndim >= 2:
-                    # Calcula o RMSE para cada passo no horizonte
-                    rmse_per_step = np.sqrt(np.mean((y_true - y_pred)**2, axis=0))
-                    steps = np.arange(1, len(rmse_per_step) + 1)
-                    
-                    ax.plot(steps, rmse_per_step, label=f'Batch {batch_size}', linewidth=2, alpha=0.8)
-                    plotted_anything = True
-                
+                with np.load(pred_path) as data:
+                    if 'test_rmse_per_horizon' in data:
+                        rmse_per_step = data['test_rmse_per_horizon']
+                        scope = 'teste completo'
+                    elif data['y_true'].ndim == 2:
+                        # Legacy files contain only the saved sample.
+                        rmse_per_step = np.sqrt(np.mean((data['y_true'] - data['y_pred'])**2, axis=0))
+                        scope = 'amostra salva (legado)'
+                    else:
+                        continue
+                steps = np.arange(1, len(rmse_per_step) + 1)
+                ax.plot(steps, rmse_per_step, label=f'Batch {batch_size} ({scope})', linewidth=2, alpha=0.8)
+                plotted_anything = True
+
             if plotted_anything:
                 ax.set_title(f'Degradação do RMSE no Horizonte\nDataset: {dataset.capitalize()} | Modelo: {model}')
                 ax.set_xlabel('Passos Futuros (Horizonte)')
